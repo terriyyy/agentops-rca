@@ -4,7 +4,7 @@
 
 V0.1 历史工作台与 V0.2 实时监控已实现：历史导入、命令启动 Python Agent、工具／日志采集、SSE 实时页面、补传、中断处理、独立验收证据与两轮对照。V0.2 核心以确定性工具 Agent 验收；真实模型 Agent 兼容性保持 pending。V0.3 已接入真实权重的离线 HGT 定位，以及手动触发的 AgentTether analyst RCA 假设与证据追溯。自动修复重试未接入。
 
-V0.4 将入口改为以 Run 为中心的工作台：首页直接展示正在运行和需要处理的 Run；Run 详情按执行事实、失败证据、根因假设、独立验收连续阅读；Task 页只承担同一目标下的多轮历史与前后对照。执行完成不代表任务验收通过，诊断报告也不改变验收结论。
+V0.4 将入口改为以 Run 为中心的工作台：首页直接展示正在运行和需要处理的 Run；Run 详情使用执行轨迹主视图、固定选中事件详情和 Run 级根因假设／独立验收面板；Task 页只承担同一目标下的多轮历史与前后对照。执行完成不代表任务验收通过，诊断报告也不改变验收结论。
 
 V0.3 使用与能力限制见 [离线 HGT 验收说明](docs/v0.3-validation.md)和 [analyst RCA 验收说明](docs/v0.3-analyst-validation.md)。在已结束 Run 的“根因假设与证据”区域，先运行 HGT，再预览实际发送内容并手动确认 RCA。新环境可复制 `.env.example` 并在本机填写已授权的模型服务配置；没有配置时仍可使用监控和离线能力。
 
@@ -45,7 +45,7 @@ cd ../..
 - 数据导入页选择 `manifest.json`，再选择该清单引用的 JSONL、报告、验收和反馈文件。示例清单位于 [tests/fixtures/demo/manifest.json](tests/fixtures/demo/manifest.json)。
 - 已有 SWE-bench 案例可以用 `scripts/prepare_history.py --source <案例目录> --out data/imports/<新目录>` 生成私有导入包。原始数据不修改；`provenance.local.json` 不上传、不提交。
 - 服务启动后也可执行 `.venv/Scripts/python.exe scripts/import_package.py data/imports/<目录>`。重复导入保持幂等；相同 Run 内容发生变化会被拒绝。
-- 单轮导入后直接打开 Run；多轮导入后打开 Task 历程，再进入具体 Run 或前后对照。Run 页按“执行事实 → 失败事实与证据 → 根因假设与证据 → 独立任务验收”阅读；完整轨迹和原始运行信息在“深入核查”中。来源未提供的证据、验收或报告会明确显示为空。
+- 单轮导入后直接打开 Run；多轮导入后打开 Task 历程，再进入具体 Run 或前后对照。Run 页默认展示完整轨迹，点击事件在右侧核对错误、输入输出和原始证据；底部 Run 级面板分别查看根因假设与独立验收，报告证据可反向定位轨迹。运行元信息从“运行资料”打开。来源未提供的时间、关系、证据、验收或报告不补造。详情见 [Run Workspace](docs/v0.4-run-workspace.md)。
 
 不会读取 `.local/workspace.json` 自动扫描外部目录，也不会自动启动模型或运行日志中的命令。
 

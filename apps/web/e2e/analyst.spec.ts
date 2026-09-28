@@ -22,7 +22,7 @@ test('已完成 RCA 的发送预览、假设和证据展示',async({page,request
   expect(submitted!.preview_sha256).toMatch(/^[a-f0-9]{64}$/);
   expect(submitted!.hgt_diagnosis_id).toBeTruthy();
   await latestRca.locator('.evidence-chip.resolved').first().click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('tab',{name:'原始证据',exact:true})).toHaveAttribute('aria-selected','true');
   await page.keyboard.press('Escape');
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();

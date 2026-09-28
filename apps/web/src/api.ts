@@ -1,7 +1,7 @@
 export interface Run {
   run_id: string; task_id: string; external_run_id: string; attempt_index: number;
   raw_attempts: unknown[]; execution_status: string; source_final_status: string;
-  report_ok: boolean | null; outcome_status: string; model_status: string; origin: string;
+  report_ok: boolean | null; outcome_status: string; model_status: string; origin: string; adapter_version?: string;
   source_algorithm: string; sample_kind: string; event_count: number; tool_call_count: number;
   failed_tool_count: number; confirmed_pairs: number; intervention_count: number;
   warnings: string[]; created_at: string; snapshot_hash: string | null;
@@ -22,13 +22,14 @@ export interface RunInsight {diagnosis:DiagnosisSnapshot;failure_signals:Failure
 export interface WorkbenchOverview {running:Run[];attention:Run[];recent:Run[]}
 export interface Task { id: string; namespace: string; external_id: string; goal: string; sample_kind: string; runs: Run[]; outcome_status?: string }
 export interface TraceEvent {
+  source_span_id?: string | null; parent_source_id?: string | null;
   event_id: string; kind: string; name: string; position: number; line: number; occurred_at: string | null;
   input: unknown; output: unknown; tool_status: string; evidence_id: string; correlation_id: string | null;
   error_signature: string | null; duration_ms: number | null;
 }
 export interface Ref {evidence_id: string; resolution_status: string; event_id: string | null; label: string}
 export interface Diagnosis {
-  input_snapshot_hash?: string; input_evidence_id?: string; prompt_evidence_id?: string; provenance?: Record<string,unknown>; created_at?: string;
+  input_snapshot_hash?: string; input_evidence_id?: string; prompt_evidence_id?: string; prompt_sha256?: string; hgt_sha256?: string; provenance?: Record<string,unknown>; created_at?: string;
   mode?: string; verification_suggestion?: string; boundary?: string; evidence_chain?: {claim:string;resolution_status:string}[];
   usage?: {prompt_tokens?:number;completion_tokens?:number}|null; model_confidence_uncalibrated?:number;
   diagnosis_id: string; format: string; model_status: string; model_reason: string | null;

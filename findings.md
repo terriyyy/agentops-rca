@@ -155,3 +155,20 @@
 - 用本机 Edge 只读打开 Phoenix 公共 Demo：`https://phoenix-demo.arize.com/` 落到 Projects，项目卡显示 Traces、Sessions、Latency P50；进入 demo_agents 后先到 Spans 页面，顶部 Traffic/Spans by status 图，Spans/Traces/Sessions/Metrics 标签，表格列含 status、kind、name、input、output、error、annotations、latency、tokens、cost。此为直接观察真实公共控制台；其数据量和分析型表格与本地单任务 RCA 不同。
 - 本机 Edge 打开 AgentLoop Playground：外层页面正常，但嵌入 iframe 通过临时 federation 登录跳转，7 秒内未呈现内部正文；不能声称实测内部首屏。AgentOps 公共 app 跳转登录页。Phoenix 公共 Demo 可直接访问，故本轮竞品证据分为“直接观察公共控制台”“官方操作文档”“仅公开壳/登录”。
 - 当前体验主要不是黑白视觉问题：本地截图已有一致的黑白灰与清晰状态色；P0 是首页主路径指向历史导入且没有实时接入提示，失败 Run 上首屏没有呈现最关键失败事实。P1 是 Task/Run/Attempt 与进程/验收/诊断概念的翻译层不足、HGT→RCA 依赖和费用边界需要理解内部术语、再次执行需用户记住 task_id、诊断/验收/原始证据跨 Tab 分散；另有首页“诊断来源”可与真实报告状态不一致。P2 是首屏 KPI 与故障任务不匹配、比较页偏汇总计数、原始事件/证据缺少渐进解释；P3 是残余英文工程标签和版本号。
+# 2026-09-28 Run Detail 参考图核对
+
+- 01 的主要模式是紧凑 trace 导航与固定选中项详情；02 只用于真实开始时间/持续时间；03 用错误及之前上下文；04 用可展开失败日志。保持浅色主题，不复制品牌、Dark UI、业务对象。
+- 现有 TraceEvent API 含 position/occurred_at/duration_ms/correlation_id，但前端没有可靠 parent id。可先按真实顺序排列，可信时间存在时画事件位置/持续区间，不从顺序或名称生成层级。
+- EvidenceDrawer 使用 modal，会阻断连续选择；本轮 Run 内证据改用固定 inspector，其他页面继续使用原 drawer。
+
+- 实际后端事件 payload 已含 source_span_id/parent_source_id，前端原类型没有声明；本轮可直接使用，无需新增 API。唯一 source id 解析、完整 parent、无环才启用树；有明确时区的时间才画位置点；唯一 correlation 配对且时间与记录 duration 一致才画区间。
+- 首次 1366×768 截图：文档高度等于窗口高度，轨迹与右侧独立滚动；诊断作业保持手动。已为合成历史样例的 ts/duration 不一致采用点视图，不把 1 秒离散示例当成真实工具耗时。
+
+- 最终桌面截图人工核查：1366×768 的失败事件选择、内联日志与右侧输入/错误可同时阅读；1920×1080 的真实来源父子树中 stdout 保持根层普通事件，没有挂到相邻工具下面。dock 独立滚动，页面不再按章节增长。窄屏列宽回归已通过。
+
+## 2026-09-28 Tool Execution 聚合与底部面板
+
+- 后端 `normalizer.correlate` 只凭明确 `correlation_id` 建立 `call_return` confirmed；前端原有 `traceModel` 已要求唯一 call/return、同名且调用位置先于返回。当前 SDK 的工具包装在调用与返回写入同一随机 correlation ID，但每条有各自原始事件与证据 ID。
+- 前端现有 API 未直接返回关联 link 列表，UI 只能按上述明确 ID 保守重建显示；无 ID、重复、不同名、顺序反常及冲突父 ID 均保留原始行。聚合行映射回 call 与 return 的原始 event_id，返回事件证据引用也能定位到该行。
+- 当前 `RunWorkspace` 已有限高可收起 dock，但 `DiagnosisPanel` 默认展开报告 Findings、指导与作业历史，Run Page 技术入口另开临时 tab，导致下半部仍像长文档。已改为常驻三 tab，假设只显示摘要/关键引用/边界与建议，完整报告手动展开；作业历史和算法原件在技术详情折叠。
+- 两个相同时间戳不能证明 0ms 区间，只有结束时间严格晚于开始且与来源 duration 一致时才画时间条；来源自己给的 duration 仍可作为数值展示。

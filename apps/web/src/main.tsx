@@ -5,7 +5,8 @@ import { Activity, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Blocks,
 import { api, pretty, outcomeNames, executionNames, diagnosisNames, attentionNames, modelNames, warningNames, type Diagnosis, type Evidence, type ImportResult, type Outcome, type Run, type Task, type TraceEvent, type WorkbenchOverview } from './api';
 import './styles.css';
 import { useLiveRun } from './live';
-import { DiagnosisControls, type Capabilities } from './diagnosis';
+import { DiagnosisControls, DiagnosisJobHistory, type Capabilities } from './diagnosis';
+import { RunWorkspace } from './run-workspace';
 
 function useData<T>(url: string, refresh = 0) {
   const [state, setState] = useState<{url:string;data: T | null; error: string; loading: boolean}>({url,data:null,error:'',loading:true});
@@ -53,7 +54,7 @@ function Shell() {
   const health=useData<{version:string;status:string}>('/health');
   useEffect(()=>{setEvidence(null);window.scrollTo(0,0);},[location.pathname]);
   const section=location.pathname.startsWith('/imports')?'数据导入':location.pathname.startsWith('/system')?'运行环境':location.pathname.startsWith('/tasks')?'任务历程':location.pathname.startsWith('/runs')?'运行详情':'运行工作台';
-  return <EvidenceContext.Provider value={setEvidence}><div className="app-shell">
+  return <EvidenceContext.Provider value={setEvidence}><div className={"app-shell"+(location.pathname.startsWith("/runs/")?" run-shell":"")}>
     <aside className="sidebar"><Link to="/" className="brand"><div className="brand-mark"><GitBranch size={22}/></div><span>agentops<span className="brand-suffix"> / RCA</span></span></Link>
       <div className="workspace-label"><div className="workspace-avatar">A</div><div>本地工作区<small>任务与诊断</small></div><span className="workspace-dot"/></div>
       <nav><NavLink to="/" end aria-label="运行工作台"><Activity size={18}/><span className="nav-text">运行工作台</span></NavLink><NavLink to="/tasks" aria-label="任务历程"><Layers3 size={18}/><span className="nav-text">任务历程</span></NavLink><NavLink to="/imports" aria-label="数据导入"><ArrowDownToLine size={18}/><span className="nav-text">数据导入</span></NavLink><NavLink to="/system" aria-label="运行环境"><Settings2 size={18}/><span className="nav-text">运行环境</span></NavLink></nav>
@@ -137,76 +138,16 @@ function TaskPage() {
   </>;
 }
 
-function FailureEvidence({run}: {run:Run}) {
-  const open=useContext(EvidenceContext);
-  const signals=run.insight?.failure_signals||[];
-  const primary=signals.find(signal=>signal.kind==='event'&&signal.evidence_id)||signals.find(signal=>signal.kind==='outcome')||signals[0];
-  const remaining=signals.filter(signal=>signal!==primary);
-  return <section className="journey-step failure-section" id="failure-evidence"><div className="journey-heading"><span>调查入口</span><div><h2>失败事实与证据</h2><p>仅展示已记录的异常和未通过检查；线索本身不是根因。</p></div></div>
-    {primary?<div className="failure-focus"><div className="failure-focus-label"><span className="failure-pulse"/>优先核查的线索 <small>{primary.kind==='outcome'?'独立验收':primary.kind==='execution'?'进程结果':'执行步骤'}</small></div><div className="failure-focus-main"><div><strong>{primary.error_signature||primary.title}</strong>{primary.error_signature&&<p>步骤：{primary.title}</p>}</div>{primary.evidence_id?<button className="button" onClick={()=>open(primary.evidence_id!)}>查看原始证据<ArrowUpRight size={15}/></button>:<a className="text-button" href="#trace-preview">查看相邻步骤<ArrowUpRight size={14}/></a>}</div><p>这是当前记录中可优先核查的事实，不表示平台已确认根因。</p></div>:<div className="journey-empty failure-neutral">{run.execution_status==='running'?'运行仍在进行；目前尚无明确失败线索。':run.outcome_status==='unknown'?'尚无明确失败线索，任务验收也缺少独立证据。':'本轮未记录可定位的失败步骤。'}</div>}
-    {!!remaining.length&&<div className="signal-list"><div className="signal-list-heading">其他已记录线索 <span>{remaining.length}</span></div>{remaining.map((signal,index)=><div className="signal-row" key={(signal.event_id||signal.kind)+index}><div><strong>{signal.title}</strong>{signal.error_signature&&<p>{signal.error_signature}</p>}<small>{signal.kind==='outcome'?'独立验收记录':signal.kind==='execution'?'进程结果':'执行事件'}</small></div>{signal.evidence_id?<button className="text-button" onClick={()=>open(signal.evidence_id!)}>查看原始证据<ArrowUpRight size={14}/></button>:<span className="muted">{signal.kind==='execution'?'可在轨迹中检查':'没有可定位的原始引用'}</span>}</div>)}</div>}
-    {run.origin==='live'&&run.execution_status!=='running'&&run.capture_integrity!=='complete'&&<p className="notice">采集数据尚未完整，当前线索可能遗漏执行步骤。</p>}
-  </section>;
-}
-
-function TracePreview({run,expanded,onToggle}: {run:Run;expanded:boolean;onToggle:()=>void}) {
-  const open=useContext(EvidenceContext);
-  const offset=Math.max(0,run.event_count-8);
-  const {data,error,loading}=useData<{items:TraceEvent[];total:number}>('/runs/'+run.run_id+'/events?offset='+offset+'&limit=8',run.event_count);
-  return <section className="trace-preview" id="trace-preview"><div className="trace-preview-heading"><div><span className="eyebrow">执行过程</span><h3>{run.execution_status==='running'?'实时步骤':'最近步骤'}</h3><p>按原始顺序展示；步骤先后不能证明因果。</p></div><span>{formatNumber(run.event_count)} 条事件</span></div>
-    {error?<ErrorBox text={error}/>:loading&&!data?<Loading/>:data?.items.length?<div className="trace-preview-list">{data.items.map(event=><button className={'trace-preview-row'+(event.tool_status==='failed'||event.error_signature?' failed':'')} key={event.event_id} onClick={()=>open(event.evidence_id)}><span className="trace-preview-position">{String(event.position+1).padStart(3,'0')}</span><span className="trace-preview-name"><strong>{event.name}</strong><small>{event.kind}{event.tool_status==='failed'?' · 工具失败':''}</small></span><span className="trace-preview-output">{pretty(event.output??event.input)}</span><ArrowUpRight size={14}/></button>)}</div>:<p className="trace-preview-empty">尚无执行事件；采集到的步骤会在这里出现。</p>}
-    <div className="trace-preview-foot"><span>点击步骤可核对原始记录；完整轨迹支持搜索、筛选与分页。</span><button className="button" aria-expanded={expanded} onClick={onToggle}>{expanded?'收起完整轨迹':run.execution_status==='running'?'查看实时轨迹':'查看完整轨迹'}<ArrowUpRight size={14}/></button></div>
-    {expanded&&<div className="trace-full" id="full-trace"><TracePanel run={run}/></div>}
-  </section>;
-}
-
-function InvestigationRail({run}: {run:Run}) {
-  return <aside className="investigation-rail" aria-label="本轮调查索引"><div className="rail-inner"><span className="eyebrow">本轮调查</span><strong className="rail-outcome">{outcomeNames[run.outcome_status]||'验收未知'}</strong><span className="rail-execution">执行：{executionNames[run.execution_status]||'未知'}</span><nav aria-label="跳转到调查内容"><a href="#failure-evidence"><span>01</span>失败事实</a><a href="#trace-preview"><span>02</span>执行步骤</a><a href="#diagnosis"><span>03</span>根因假设</a><a href="#verification"><span>04</span>独立验收</a></nav><p>诊断结论需要核对证据；任务验收由独立检查决定。</p><Link to={'/tasks/'+run.task_id}>查看同一任务的运行历程 <ArrowUpRight size={13}/></Link></div></aside>;
-}
-
-function RunRelations({run}: {run:Run}) {
-  const {data:task}=useData<Task>('/tasks/'+run.task_id);
-  const index=task?.runs.findIndex(item=>item.run_id===run.run_id)??-1;
-  const previous=index>0?task?.runs[index-1]:null;
-  const next=index>=0?task?.runs[index+1]:null;
-  return <section className="journey-step"><div className="journey-heading"><span>关联</span><div><h2>同一任务的其他运行</h2><p>同一目标下的轮次可比较结果；先后变化本身不能证明诊断或干预导致成功。</p></div></div><div className="panel relation-panel"><div>{previous?<Link to={'/runs/'+previous.run_id}>← 第 {previous.attempt_index} 次运行 · {outcomeNames[previous.outcome_status]}</Link>:<span className="muted">此前没有其他运行</span>}</div><Link to={'/tasks/'+run.task_id}>查看完整任务历程</Link><div>{next?<Link to={'/runs/'+next.run_id}>第 {next.attempt_index} 次运行 · {outcomeNames[next.outcome_status]} →</Link>:<span className="muted">暂无后续运行</span>}</div></div></section>;
-}
-
 function RunPage() {
   const {runId}=useParams();const [refresh,setRefresh]=useState(0);
   useEffect(()=>{const timer=setInterval(()=>setRefresh(value=>value+1),3000);return()=>clearInterval(timer);},[]);
   const {data:initial,error,loading}=useData<Run>('/runs/'+runId,refresh);
   const {run,connection}=useLiveRun(initial);
-  const [showTrace,setShowTrace]=useState(false);const [showTechnical,setShowTechnical]=useState(false);
-  useEffect(()=>{setShowTrace(false);setShowTechnical(false);},[runId]);
   if(loading&&!run)return <Loading/>;if(!run)return <ErrorBox text={error}/>;
-  return <div className="run-page"><Back to="/">返回运行工作台</Back><div className="page-heading compact run-page-head"><div><div className="eyebrow">运行详情 <SourceLabels run={run}/></div><h1>{run.task_goal||'Agent 运行'}</h1><p>第 {run.attempt_index} 次运行 · {new Date(run.created_at).toLocaleString('zh-CN')} · <Link to={'/tasks/'+run.task_id}>查看所属任务</Link></p></div></div>
-    <section className="run-facts" aria-label="本轮状态"><div className="run-facts-intro"><span className="eyebrow">本轮事实</span><strong>执行结果与任务结果分别判断</strong></div><div className="run-status"><div><span>执行状态</span><strong>{executionNames[run.execution_status]||'未知'}</strong><small>进程退出码：{run.exit_code??'未提供'}</small></div><div className={'outcome-state '+(run.outcome_status==='failed'?'failed':'')}><span>任务验收</span><strong>{outcomeNames[run.outcome_status]||'未知'}</strong><small>独立检查；无证据则未知</small></div><div><span>诊断进度</span><strong><DiagnosisLabel run={run}/></strong><small>报告不改变验收</small></div><div><span>采集数据</span><strong>{run.origin==='live'?({pending:'接收中／待补齐',complete:'完整',partial:'不完整',unknown:'未知'} as Record<string,string>)[run.capture_integrity||'unknown']:'历史导入'}</strong><small>{run.origin==='live'?'现场采集完整性':'按来源文件核对'}</small></div></div></section>
-    {run.origin==='live'&&<div className="live-monitor" role="status"><div><span className={'connection-dot '+(connection!=='connected'?'offline':'')}/><strong>{connection==='connected'?'网页实时连接':connection==='reconnecting'?'网页断线 · 正在重连':'正在建立实时连接'}</strong><span>采集器：{({connected:'在线',disconnected:'失联 · 执行状态未确认',finished:'已结束'} as Record<string,string>)[run.capture_status||'']||'连接中'}</span></div><div><span>已收到 {formatNumber(run.event_count)} 条事件</span><span>丢失告警：{run.dropped_events||0}</span></div></div>}
-    {error&&<p className="notice" role="status">暂时无法刷新运行详情，正在显示已收到的记录。</p>}
-    <Warnings items={run.warnings}/>
-    <div className="run-workspace"><div className="run-investigation">
-      <FailureEvidence run={run}/>
-      <TracePreview run={run} expanded={showTrace} onToggle={()=>setShowTrace(value=>!value)}/>
-      <section className="journey-step diagnosis-section" id="diagnosis"><div className="journey-heading"><span>待验证</span><div><h2>根因假设与证据</h2><p>先核对线索，再决定是否手动定位或调用模型；诊断不等于任务验收。</p></div></div>{run.execution_status==='running'?<p className="run-pending">本轮仍在执行。结束并补齐采集后，可手动发起本机定位；联网 RCA 仍须预览并确认。</p>:<DiagnosisPanel run={run}/>}</section>
-      <section className="journey-step verification-section" id="verification"><div className="journey-heading"><span>独立结论</span><div><h2>独立任务验收</h2><p>仅依据有来源的检查记录判断目标是否达成；模型建议的验证步骤尚未执行。</p></div></div>{run.execution_status==='running'&&run.outcome_status==='unknown'?<p className="run-pending">尚未收到独立检查结果，任务验收保持“未知”。</p>:<OutcomePanel run={run}/>}</section>
-      <RunRelations run={run}/>
-      <section className="journey-step technical-section"><div className="journey-heading"><span>资料</span><div><h2>深入核查</h2><p>原始文件、算法数据和运行元信息仍可追溯。</p></div></div><button className="button" aria-expanded={showTechnical} onClick={()=>setShowTechnical(value=>!value)}>{showTechnical?'收起技术详情':'查看技术详情'}</button>{showTechnical&&<div className="deep-panel"><Overview run={run}/></div>}</section>
-    </div><InvestigationRail run={run}/></div>
-  </div>;
-}
-
-function TracePanel({run}: {run:Run}) {
-  const open=useContext(EvidenceContext);const [kind,setKind]=useState('');const [q,setQ]=useState('');const [search,setSearch]=useState('');const [offset,setOffset]=useState(0);const [follow,setFollow]=useState(run.origin==='live');
-  useEffect(()=>{const t=setTimeout(()=>{setSearch(q);setOffset(0);},200);return()=>clearTimeout(t);},[q]);
-  const {data,error,loading}=useData<{items:TraceEvent[];total:number}>('/runs/'+run.run_id+'/events?'+new URLSearchParams({kind,q:search,offset:String(offset),limit:'50'}),run.event_count);
-  useEffect(()=>{if(follow&&!search&&!kind&&data)setOffset(Math.max(0,Math.floor((data.total-1)/50)*50));},[data?.total,follow,search,kind]);
-  return <section className="panel"><div className="table-toolbar"><div className="event-filters">{[['','全部事件'],['tool_call','工具调用'],['tool_return','工具返回'],['llm','LLM'],['log','进程日志'],['event','生命周期']].map(([key,label])=><button key={key} className={kind===key?'selected':''} onClick={()=>{setKind(key);setOffset(0);setFollow(false);}}>{label}</button>)}</div><label className="search-box narrow"><Search size={16}/><input aria-label="搜索事件" placeholder="搜索事件或错误…" value={q} onChange={e=>setQ(e.target.value)}/></label></div>
-    {run.origin==='live'&&<div className="live-toolbar"><span>{follow?'跟随最新事件页':'已暂停跟随 · 可查看旧记录'}</span><button className="text-button" onClick={()=>{setFollow(v=>!v);if(!follow){setKind('');setQ('');}}}>{follow?'暂停跟随':'跟随最新'}</button></div>}
-    <div className="trace-head"><span>位置 / 类型</span><span>事件与内容摘要</span><span>证据</span></div>
-    {loading?<Loading/>:error?<ErrorBox text={error}/>:!data?.items.length?<Empty title="没有匹配的事件">尝试调整搜索条件。</Empty>:data.items.map(event=><button className="trace-row" key={event.event_id} onClick={()=>open(event.evidence_id)}><div className="trace-position"><span className="mono">{String(event.position+1).padStart(3,'0')}</span><span className={'event-kind '+event.kind}>{event.kind==='tool_call'?<Terminal size={15}/>:event.kind==='llm'?<Blocks size={15}/>:event.kind==='tool_return'?<ArrowLeft size={15}/>:<Circle size={12}/>}</span><span>{event.kind}</span></div><div className="trace-content"><div><strong>{event.name}</strong>{event.tool_status==='failed'&&<span className="tiny-error">工具失败</span>}{event.duration_ms!==null&&<span className="duration">{event.duration_ms} ms</span>}</div><p>{pretty(event.output??event.input)}</p></div><span className="line-ref">{event.line?'L'+event.line:'事件'}<ArrowUpRight size={13}/></span></button>)}
-    <div className="table-foot"><span>{data?.total||0} 条事件 · 保留不同采集层级</span><div className="pagination"><button className="icon-button" aria-label="上一页" disabled={offset===0} onClick={()=>{setFollow(false);setOffset(Math.max(0,offset-50));}}><ChevronLeft size={16}/></button><span>{Math.floor(offset/50)+1} / {Math.max(1,Math.ceil((data?.total||0)/50))}</span><button className="icon-button" aria-label="下一页" disabled={loading||offset+50>=(data?.total||0)} onClick={()=>{setFollow(false);setOffset(offset+50);}}><ChevronRight size={16}/></button></div></div>
-  </section>;
+  return <RunWorkspace key={run.run_id} run={run} connection={connection} error={error} sourceLabels={<SourceLabels run={run}/>} diagnosisLabel={<DiagnosisLabel run={run}/>}
+    renderDiagnosis={open=><EvidenceContext.Provider value={open}><DiagnosisPanel run={run}/></EvidenceContext.Provider>}
+    renderValidation={open=><EvidenceContext.Provider value={open}><OutcomePanel run={run}/></EvidenceContext.Provider>}
+    renderTechnical={open=><EvidenceContext.Provider value={open}><TechnicalPanel run={run}/></EvidenceContext.Provider>}/>;
 }
 
 function ReportView({report}: {report:Diagnosis}) {
@@ -215,7 +156,6 @@ function ReportView({report}: {report:Diagnosis}) {
   return <div className="report-view"><section className="panel diagnosis-summary"><div className="section-heading"><div><h3>{kind==='hypothesis'?'待验证的根因假设':kind==='localization'?'本机定位线索':'来源附带的历史报告'}</h3><p>{kind==='hypothesis'?'模型建议尚未得到独立检查证明。':kind==='localization'?'定位结果并非完整根因解释。':'此报告并非本平台对现场 Run 的重新诊断。'}</p></div><button className="text-button" onClick={()=>open(report.raw_evidence_id)}>查看源报告<ArrowUpRight size={14}/></button></div><p>{report.summary}</p></section>
     {report.findings?.length>0&&<section className="panel findings"><div className="section-heading"><h3>报告引用的证据 <span className="counter">{report.findings.length}</span></h3></div>{report.findings.map((finding,index)=><article className="finding" key={index}><div className={'finding-marker '+finding.severity}>{index+1}</div><div><h3>{finding.title}</h3>{finding.description&&<p>{finding.description}</p>}<div className="evidence-chips">{finding.evidence.map((ref,j)=><button className={'evidence-chip '+ref.resolution_status} key={j} onClick={()=>open(ref.evidence_id)}><FileText size={13}/>{ref.label}{ref.resolution_status!=='resolved'?' · 引用待解析':''}<ArrowUpRight size={12}/></button>)}{!finding.evidence.length&&<span className="muted">来源未提供事件引用</span>}</div></div></article>)}</section>}
     {kind==='hypothesis'&&<section className="panel guidance-panel"><h3>建议与适用边界</h3>{report.guidance&&<><strong>建议操作</strong><p>{report.guidance}</p></>}<strong>建议验证 · 尚未执行</strong><p>{report.verification_suggestion||'报告未提供具体步骤'}</p>{report.boundary&&<><strong>适用边界</strong><p>{report.boundary}</p></>}</section>}
-    <details className="panel report-technical"><summary>查看报告来源与技术详情</summary><div><p>来源：{report.source_algorithm} · {report.format} · {report.origin==='imported'?'历史导入':'本平台生成'}</p>{report.model_reason&&<p>{report.model_reason}</p>}{report.prompt_evidence_id&&<button className="text-button" onClick={()=>open(report.prompt_evidence_id!)}>查看实际发送内容</button>}{report.input_evidence_id&&<button className="text-button" onClick={()=>open(report.input_evidence_id!)}>追溯输入快照</button>}{report.provenance&&<pre>{pretty(report.provenance)}</pre>}{report.graph&&<GraphPanel graph={report.graph}/>}<p className="hash-text">输入快照：{report.input_snapshot_hash||'来源未提供'}</p></div></details>
   </div>;
 }
 
@@ -225,14 +165,18 @@ function DiagnosisPanel({run}: {run:Run}) {
   const open=useContext(EvidenceContext);
   const selectedId=run.insight?.diagnosis.featured_report?.diagnosis_id;
   const featured=data?.find(report=>report.diagnosis_id===selectedId)||data?.[0];
-  const others=data?.filter(report=>report.diagnosis_id!==featured?.diagnosis_id)||[];
   const latestJob=run.insight?.diagnosis.latest_job;
-  return <>
+  return <div className="diagnosis-layout"><div className="diagnosis-report-content">
     <div className="panel diagnosis-progress"><strong><DiagnosisLabel run={run}/></strong><p>{latestJob&&['failed','timed_out','interrupted'].includes(latestJob.state)&&run.insight?.diagnosis.report_count?'已有报告仍保留；最近一次诊断作业未成功。':run.insight?.diagnosis.state==='none'?'本轮尚无诊断报告。':'报告只提供线索或待验证的解释，不能替代独立验收。'}</p></div>
-    {loading&&!data?<Loading/>:error?<ErrorBox text={error}/>:featured?<ReportView report={featured}/>:<div className="panel journey-empty">尚无报告。可在下方手动开始本机定位；联网 RCA 还需要预览实际发送内容并再次确认。</div>}
-    <DiagnosisControls run={run} onChange={()=>setRevision(value=>value+1)} onEvidence={open}/>
-    {!!others.length&&<details className="report-history"><summary>查看其他报告与历史版本（{others.length}）</summary>{others.map(report=><ReportView key={report.diagnosis_id} report={report}/>)}</details>}
-  </>;
+    {loading&&!data?<Loading/>:error?<ErrorBox text={error}/>:featured?<div className="hypothesis-compact"><div className="hypothesis-heading"><strong>{featured.mode==='analyst_rca'?'待验证 · 根因假设':featured.origin==='recomputed'?'定位线索 · 非完整 RCA':'来源附带 · 历史报告'}</strong><button className="text-button" onClick={()=>open(featured.raw_evidence_id)}>源报告<ArrowUpRight size={12}/></button></div><p className="hypothesis-statement">{featured.summary}</p>{featured.findings?.length>0&&<div className="hypothesis-evidence"><span>关键 Evidence</span>{featured.findings.flatMap(finding=>finding.evidence).slice(0,3).map((ref,index)=><button className={'evidence-chip '+ref.resolution_status} key={index} onClick={()=>open(ref.evidence_id)}>{ref.label}{ref.resolution_status!=='resolved'?' · 待解析':''}<ArrowUpRight size={11}/></button>)}</div>}{(featured.boundary||featured.guidance||featured.verification_suggestion)&&<div className="hypothesis-notes">{featured.boundary&&<p><strong>边界</strong>{featured.boundary}</p>}{featured.guidance&&<p><strong>建议</strong>{featured.guidance}</p>}{featured.verification_suggestion&&<p><strong>待执行验证</strong>{featured.verification_suggestion}</p>}</div>}<details className="full-report"><summary>查看完整报告</summary><ReportView report={featured}/></details></div>:<div className="panel journey-empty">尚无报告。可手动开始本机定位；联网 RCA 需要预览实际发送内容并再次确认。</div>}
+    </div><DiagnosisControls run={run} onChange={()=>setRevision(value=>value+1)}/></div>;
+}
+
+function TechnicalPanel({run}: {run:Run}) {
+  const {data,error}=useData<Diagnosis[]>('/runs/'+run.run_id+'/diagnoses',run.insight?.diagnosis.report_count||0);
+  const {data:capabilities}=useData<Capabilities>('/diagnosis/capabilities');
+  const open=useContext(EvidenceContext);
+  return <div className="technical-panel"><DiagnosisJobHistory run={run} onEvidence={open}/><details className="technical-group"><summary>算法、模型与来源 {data?.length?`· ${data.length} 份报告`:''}</summary>{error&&<ErrorBox text={error}/>}<p className="muted">当前配置模型：{capabilities?.model||'未配置'}。历史报告使用的模型以其原始记录为准。</p>{data?.map(report=><details className="technical-report" key={report.diagnosis_id}><summary>{report.mode==='analyst_rca'?'RCA':report.origin==='recomputed'?'HGT':'历史'} · {report.summary}</summary><dl className="event-facts"><dt>算法</dt><dd>{report.source_algorithm}</dd><dt>格式 / 来源</dt><dd>{report.format} · {report.origin}</dd><dt>模型状态</dt><dd>{report.model_status} · {report.model_reason||'—'}</dd><dt>输入 SHA-256</dt><dd>{report.input_snapshot_hash||'未提供'}</dd>{report.prompt_sha256&&<><dt>Prompt SHA-256</dt><dd>{report.prompt_sha256}</dd></>}{report.hgt_sha256&&<><dt>HGT SHA-256</dt><dd>{report.hgt_sha256}</dd></>}</dl>{report.input_evidence_id&&<button className="text-button" onClick={()=>open(report.input_evidence_id!)}>输入快照</button>}{report.prompt_evidence_id&&<button className="text-button" onClick={()=>open(report.prompt_evidence_id!)}>实际发送内容</button>}<button className="text-button" onClick={()=>open(report.raw_evidence_id)}>原始报告 / HGT 输出</button>{report.graph&&<GraphPanel graph={report.graph}/>}{(report.provenance||report.usage)&&<details><summary>Provenance / Usage JSON</summary><pre>{pretty({provenance:report.provenance,usage:report.usage})}</pre></details>}</details>)}</details><details className="technical-group"><summary>运行元数据与原始文件</summary><Overview run={run}/></details></div>;
 }
 
 function GraphPanel({graph}: {graph:Diagnosis['graph']}) {
@@ -249,7 +193,7 @@ function OutcomePanel({run}: {run:Run}) {
 
 function Overview({run}: {run:Run}) {
   const open=useContext(EvidenceContext);
-  return <div className="overview-grid"><section className="panel"><h2>运行元数据</h2><dl><div><dt>轮次来源</dt><dd>{run.origin==='live'?'采集会话':'导入清单'}：第 {run.attempt_index} 轮</dd></div><div><dt>原始 attempt</dt><dd className="mono">{pretty(run.raw_attempts)}</dd></div><div><dt>历史报告 ok</dt><dd className="mono">{pretty(run.report_ok)}</dd></div><div><dt>采集调用数</dt><dd>{run.tool_call_count} · 包含不同采集层级</dd></div><div><dt>精确调用配对</dt><dd>{run.confirmed_pairs}</dd></div><div><dt>干预事件</dt><dd>{run.intervention_count}</dd></div><div><dt>输入快照 SHA-256</dt><dd className="hash-text">{run.snapshot_hash||'采集尚未完整，暂未生成快照'}</dd></div></dl></section><section className="panel"><h2>原始文件</h2>{run.origin==='live'&&<p className="muted">现场事件逐条保存，可从执行轨迹打开原始接收证据。</p>}<div className="artifact-list">{run.artifacts.map(a=><div key={a.filename}><FileJson size={20}/><div><strong>{a.filename}</strong><small>{a.kind}</small><code>{a.sha256}</code></div></div>)}</div>{run.feedback&&<div className="feedback"><h3>本轮历史反馈</h3><p>文件存在不等于已经验证注入。</p><button className="text-button" onClick={()=>open(run.feedback!.evidence_id)}>查看反馈文件<ArrowUpRight size={14}/></button></div>}</section></div>;
+  return <div className="overview-grid"><section className="panel"><h2>运行元数据</h2><dl><div><dt>轮次来源</dt><dd>{run.origin==='live'?'采集会话':'导入清单'}：第 {run.attempt_index} 轮</dd></div><div><dt>Adapter version</dt><dd>{run.adapter_version||'未提供'}</dd></div><div><dt>原始 attempt</dt><dd className="mono">{pretty(run.raw_attempts)}</dd></div><div><dt>历史报告 ok</dt><dd className="mono">{pretty(run.report_ok)}</dd></div><div><dt>采集调用数</dt><dd>{run.tool_call_count} · 包含不同采集层级</dd></div><div><dt>精确调用配对</dt><dd>{run.confirmed_pairs}</dd></div><div><dt>干预事件</dt><dd>{run.intervention_count}</dd></div><div><dt>输入快照 SHA-256</dt><dd className="hash-text">{run.snapshot_hash||'采集尚未完整，暂未生成快照'}</dd></div></dl></section><section className="panel"><h2>原始文件</h2>{run.origin==='live'&&<p className="muted">现场事件逐条保存，可从执行轨迹打开原始接收证据。</p>}<div className="artifact-list">{run.artifacts.map(a=><div key={a.filename}><FileJson size={20}/><div><strong>{a.filename}</strong><small>{a.kind}</small><code>{a.sha256}</code></div></div>)}</div>{run.feedback&&<div className="feedback"><h3>本轮历史反馈</h3><p>文件存在不等于已经验证注入。</p><button className="text-button" onClick={()=>open(run.feedback!.evidence_id)}>查看反馈文件<ArrowUpRight size={14}/></button></div>}</section></div>;
 }
 
 function ComparePage() {

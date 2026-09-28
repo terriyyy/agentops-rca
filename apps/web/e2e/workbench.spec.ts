@@ -23,16 +23,18 @@ test('导入 → 两轮对照 → 诊断证据 → 验收证据 → 去重', asy
   await expect(page.locator('.comparison')).toContainText('验收通过');
   await page.screenshot({path:'../../.local/screenshots/comparison.png',fullPage:true});
   await page.getByRole('link',{name:'查看运行详情',exact:true}).first().click();
-  await expect(page.getByRole('heading',{name:'根因假设与证据'})).toBeVisible();
+  await page.getByRole('tab',{name:/^根因假设/}).click();
   await page.locator('.evidence-chip.resolved').first().click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('tab',{name:'原始证据',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(page.locator('.source-code')).toContainText('shared-test');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('tab',{name:/^独立验收/}).click();
   await page.getByRole('button',{name:'追溯验收记录',exact:true}).click();
   await expect(page.locator('.source-code')).toContainText('synthetic_test_harness');
   await page.getByRole('button',{name:'关闭证据',exact:true}).click();
-  await page.getByRole('button',{name:'查看完整轨迹',exact:true}).click();
+  await expect(page.locator('.execution-pane')).toBeVisible();
+  await expect(page.locator('.duration-bar')).toHaveCount(0); // Fixture timestamps and recorded durations disagree.
   await page.getByLabel('搜索事件').fill('assertion_failed');
   await expect(page.locator('.trace-row')).toHaveCount(1);
   await page.getByRole('link',{name:'运行工作台',exact:true}).click();
@@ -73,7 +75,7 @@ test('真实 SymPy 记录的页面与证据验收',async({page,request})=>{
   await expect(page.locator('.source-code')).toContainText('tool_return');
   await page.screenshot({path:'../../.local/screenshots/real-evidence.png',fullPage:true});
   await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:'查看完整轨迹',exact:true}).click();
+  await expect(page.locator('.execution-pane')).toBeVisible();
   await expect(page.locator('.trace-row')).toHaveCount(50);
   await page.getByRole('button',{name:'下一页',exact:true}).click();
   await expect(page.locator('.trace-position').first()).toContainText('051');

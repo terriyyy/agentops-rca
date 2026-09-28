@@ -16,9 +16,9 @@ test('CLI → 工具开始先于结束 → 实时轨迹 → 验收证据 → 刷
     const id=output.match(/\/runs\/([a-f0-9]+)/)![1];
     await page.goto('/runs/'+id);
     await expect(page.locator('.live-monitor')).toContainText('网页实时连接');
-    await page.getByRole('button',{name:'查看实时轨迹'}).click();
+    await expect(page.locator('.execution-pane')).toBeVisible();
     await expect(page.locator('.trace-row').filter({hasText:'write_solution'}).first()).toBeVisible();
-    expect(await page.locator('.trace-row').filter({hasText:'write_solution'}).filter({hasText:'tool_return'}).count()).toBe(0);
+    expect(await page.locator('.trace-row').filter({hasText:'write_solution'}).filter({hasText:'Tool · 返回'}).count()).toBe(0);
     expect((await (await request.get('/api/runs/'+id)).json()).execution_status).toBe('running');
     await page.getByRole('button',{name:'暂停跟随',exact:true}).click();
     await expect(page.getByText('已暂停跟随 · 可查看旧记录')).toBeVisible();
@@ -26,6 +26,7 @@ test('CLI → 工具开始先于结束 → 实时轨迹 → 验收证据 → 刷
     await expect(page.locator('.run-status')).toContainText('完整');
     await expect(page.locator('.run-status')).toContainText('执行完成');
     await expect(page.locator('.run-status')).toContainText('验收未通过');
+    await page.getByRole('tab',{name:/^独立验收/}).click();
     await page.getByRole('button',{name:'追溯验收记录',exact:true}).click();
     await expect(page.locator('.source-code')).toContainText('python-assertion');
     await page.keyboard.press('Escape');
@@ -47,7 +48,7 @@ test('SSE 浏览器重连、分页跟随与 100 条事件显示延迟',async({pa
   const {run_id:id}=await created.json();
   await page.goto('/runs/'+id);
   await expect(page.locator('.live-monitor')).toContainText('网页实时连接');
-  await page.getByRole('button',{name:'查看实时轨迹'}).click();
+  await expect(page.locator('.execution-pane')).toBeVisible();
   // Record first DOM appearance for each protocol event, rather than API timing.
   await page.evaluate(()=>{
     const measurements:Record<string,number>={};

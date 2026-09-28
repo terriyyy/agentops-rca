@@ -28,6 +28,7 @@ id_ed25519*
 .agentops/
 /private/
 /scratch/
+/figures/
 .plan-attestation
 .planning/**/.attestation
 
