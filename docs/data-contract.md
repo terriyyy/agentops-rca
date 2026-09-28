@@ -1,6 +1,10 @@
 # 核心数据契约草案 v0.1
 
-状态：设计草案，P0 用真实样例验证后再固化为可执行 Schema。所有规范化对象有 `schema_version`，源字段不直接改写。
+状态：V0.1 已落地导入清单、Run、事件、证据、诊断和验收模型。导入清单的可执行校验位于 `apps/api/contracts.py`，导出的 JSON Schema 位于 `packages/contracts/import-manifest.schema.json`。所有导入均标记契约／适配器版本，源字段不直接改写。
+
+实现收敛：Project 在首版为默认本地工作区；历史反馈嵌入 Run，链接和事件等子记录继承 Run 的契约版本。附件原始 UTF-8 文本（含 BOM／原始换行）存入 SQLite，以原字节 SHA-256 追溯；导入清单按规范化 JSON 加文件哈希确定幂等包标识。
+
+限制：单次请求最多32 MiB、单文件10 MiB、最多10轮、40个数据文件、每轮20,000事件。只接受普通文件名，不接收压缩包或服务器文件路径。数据包全部完成校验／插入后一次事务提交；任一轮失败则整体回滚。错误通过 HTTP 返回，不保留半完成任务。
 
 | 对象 | 核心字段 | 关系与约束 |
 |---|---|---|
@@ -16,7 +20,7 @@
 | EvidenceRef | evidence_id, artifact_id, locator, event_id, resolution_status | locator 为行号范围、JSON Pointer 等；引用需存在性检查 |
 | FeedbackRecord | feedback_id, from_run_id, to_run_id, source_diagnosis_id, content_ref | 历史反馈与实际注入分开，不把计划视为执行 |
 
-V0.2 追加 DiagnosisJob；V0.3 追加 VerificationRun 与采集会话。首版干预事件可保留为 Event(kind=intervention)，无需先建通用修复编排器。
+2026-09-20：V0.2 已追加 capture_sessions、live_receipts 和 live_changes 表（SQLite user_version=2），保留 v0.1 历史导入契约。可执行现场契约位于 `apps/api/live_contracts.py`，导出为 `packages/contracts/live.schema.json`。现场 Run／会话身份由 URL 与会话凭据绑定；事件信封不重复接受可冲突的 run_id/session_id。生产者序号与服务端游标分开，finish 声明最终序号范围，完整后生成快照。详细限制见 [接入说明](v0.2-agent-integration.md)。V0.3 再追加 DiagnosisJob；VerificationRun 的自动编排与受控重试留待后续。
 
 ## 状态与事实优先级
 
@@ -38,3 +42,16 @@ V0.2 追加 DiagnosisJob；V0.3 追加 VerificationRun 与采集会话。首版�
 ## 前端展示要求
 
 始终区分源记录、规范化解释、模型诊断。超长输出分页／折叠；时间戳缺失或时区未知保留质量告警；不得把未记录值展示为 0 或成功。图中的 temporal/shared-artifact 边保留关系名，不统一标成因果边。
+
+
+## V0.3 诊断作业与报告
+
+DiagnosisJob：job_id、run_id、request_id（同 Run 幂等）、state（queued/running/succeeded/failed/cancelled/timed_out/interrupted）、created_at、finished_at、error、diagnosis_id、input_snapshot_hash、input_evidence_id、mode=offline_hgt。首版全局单作业，结束后不覆盖历史结果。
+
+重算 DiagnosisReport 新增 origin=recomputed、job_id、created_at、input_snapshot_hash、input_evidence_id、provenance（adapter_version、源码/权重/manifest SHA-256、依赖版本、mode、analyst、network）。model_status=ready 仅指 HGT 已加载；能力接口整体仍为 degraded。Findings 的每个模型 event_id 回到原始 EvidenceRef，不可解析则显式 unresolved。任务 Outcome 不因模型报告改变。
+
+## V0.3 analyst RCA 扩展
+
+`DiagnosisJob.mode=analyst_rca`，沿用原作业状态机与同 Run 的 request_id 幂等键；新增 `hgt_diagnosis_id`、`hgt_sha256`、`prompt_sha256`、`preview_sha256`、`prompt_evidence_id`、`model`。请求必须回传预览哈希及选定 HGT 报告 ID，服务端重新计算后才发出模型调用。一次作业只允许一个请求，重启后 interrupted 不自动重发。
+
+`DiagnosisReport.format=agenttether-analyst`、`analysis_status=complete` 表示结构化 analyst 响应通过 ID 校验，**不表示根因已得到测试证明**。新增 `verification_suggestion`、`boundary`、`model_confidence_uncalibrated`、`evidence_chain`（逐项 resolved/unresolved）、`prompt_evidence_id`、`usage` 和模型 provenance。根因转折点必须在同快照的 HGT 选中转换中；Findings 的事件引用回到原始 EvidenceRef。模型建议不会写入 Outcome。`GET /api/diagnosis/capabilities` 中 analyst 状态区分 unconfigured、configured、last_call_failed、last_call_succeeded。

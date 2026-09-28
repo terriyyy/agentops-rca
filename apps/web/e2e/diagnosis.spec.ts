@@ -1,0 +1,32 @@
+import {test,expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+
+test('真实离线 HGT 作业、固定快照与定位证据',async({page,request})=>{
+  test.setTimeout(120000);
+  const capabilities=await (await request.get('/api/diagnosis/capabilities')).json();
+  test.skip(capabilities.hgt!=='ready','Requires locally verified AgentTether bundle; never calls an LLM');
+  const token=randomUUID()+randomUUID();
+  const run=await (await request.post('/api/live/runs',{data:{request_id:randomUUID(),write_token:token,goal:'HGT synthetic browser acceptance',sample_kind:'synthetic'}})).json();
+  const headers={Authorization:'Bearer '+token};
+  const events=[{kind:'tool_call',input:{command:'pytest'},ok:null,output:null},{kind:'tool_return',input:null,ok:false,output:{returncode:1,stderr:'AssertionError: synthetic regression'}}].map((e,i)=>({...e,event_id:randomUUID(),producer_id:'browser-hgt',producer_seq:i+1,occurred_at:new Date().toISOString(),name:'shell',correlation_id:'shell-pair'}));
+  expect((await request.post('/api/live/runs/'+run.run_id+'/events',{headers,data:{events}})).ok()).toBeTruthy();
+  expect((await request.post('/api/live/runs/'+run.run_id+'/finish',{headers,data:{exit_code:0,producers:{'browser-hgt':2}}})).ok()).toBeTruthy();
+  await page.goto('/runs/'+run.run_id);
+  await page.getByRole('button',{name:'运行 HGT 定位',exact:true}).click();
+  await expect(page.getByRole('status',{name:''}).filter({hasText:'定位完成'})).toBeVisible({timeout:90000});
+  await expect(page.getByRole('heading',{name:'本机定位线索',exact:true})).toBeVisible();
+  await page.getByText('查看报告来源与技术详情').click();
+  await page.getByRole('button',{name:'追溯输入快照',exact:true}).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.source-code')).toContainText('schema_version');
+  await page.keyboard.press('Escape');
+  await page.locator('.evidence-chip.resolved').first().click();
+  await expect(page.locator('.source-code')).toContainText('shell');
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.getByRole('heading',{name:'本机定位线索',exact:true})).toBeVisible();
+  await page.screenshot({path:'../../.local/screenshots/v03-diagnosis.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await page.screenshot({path:'../../.local/screenshots/v03-diagnosis-mobile.png',fullPage:true});
+});

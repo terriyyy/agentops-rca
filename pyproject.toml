@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentops-rca-local"
+version = "0.4.0"
+description = "Local AgentOps collection CLI and explicit Python tool instrumentation"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+agentops = "agentops_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["packages/collector"]

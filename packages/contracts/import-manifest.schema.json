@@ -1,0 +1,128 @@
+{
+  "$defs": {
+    "RunInput": {
+      "additionalProperties": false,
+      "properties": {
+        "run_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Run Key",
+          "type": "string"
+        },
+        "attempt_index": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Attempt Index",
+          "type": "integer"
+        },
+        "telemetry": {
+          "title": "Telemetry",
+          "type": "string"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome"
+        },
+        "feedback": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Feedback"
+        },
+        "source_algorithm": {
+          "default": "PROBE",
+          "maxLength": 100,
+          "title": "Source Algorithm",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_key",
+        "attempt_index",
+        "telemetry"
+      ],
+      "title": "RunInput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "default": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_namespace": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Source Namespace",
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "goal": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Goal",
+      "type": "string"
+    },
+    "sample_kind": {
+      "default": "historical",
+      "enum": [
+        "historical",
+        "synthetic",
+        "derived"
+      ],
+      "title": "Sample Kind",
+      "type": "string"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/RunInput"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Runs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "source_namespace",
+    "task_id",
+    "goal",
+    "runs"
+  ],
+  "title": "ImportManifest",
+  "type": "object"
+}

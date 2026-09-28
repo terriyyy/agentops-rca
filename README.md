@@ -1,13 +1,83 @@
 # agentops-rca
 
-面向本地代码／运维 Agent 的执行轨迹、故障诊断与验收结果平台，计划复用 AgentTether 的采集和诊断能力。
+面向本地代码／运维 Agent 的实时监控、故障调查与独立验收平台。诊断阶段可手动使用 AgentTether 的离线 HGT 和 analyst RCA。
 
-当前处于第一版开发规划阶段。仓库包含开发计划和经整理的研究结论，尚无可运行的平台。首个交付版本聚焦历史记录导入、两轮执行对照和诊断证据追溯；实际模型诊断作为下一验收里程碑。
+V0.1 历史工作台与 V0.2 实时监控已实现：历史导入、命令启动 Python Agent、工具／日志采集、SSE 实时页面、补传、中断处理、独立验收证据与两轮对照。V0.2 核心以确定性工具 Agent 验收；真实模型 Agent 兼容性保持 pending。V0.3 已接入真实权重的离线 HGT 定位，以及手动触发的 AgentTether analyst RCA 假设与证据追溯。自动修复重试未接入。
+
+V0.4 将入口改为以 Run 为中心的工作台：首页直接展示正在运行和需要处理的 Run；Run 详情按执行事实、失败证据、根因假设、独立验收连续阅读；Task 页只承担同一目标下的多轮历史与前后对照。执行完成不代表任务验收通过，诊断报告也不改变验收结论。
+
+V0.3 使用与能力限制见 [离线 HGT 验收说明](docs/v0.3-validation.md)和 [analyst RCA 验收说明](docs/v0.3-analyst-validation.md)。在已结束 Run 的“根因假设与证据”区域，先运行 HGT，再预览实际发送内容并手动确认 RCA。新环境可复制 `.env.example` 并在本机填写已授权的模型服务配置；没有配置时仍可使用监控和离线能力。
+
+## 启动
+
+需要 Python 3.12（已在该版本验证）、Node.js 22 或更高版本。Windows PowerShell 首次安装：
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r apps/api/requirements.lock
+.\.venv\Scripts\python.exe -m pip install -e .
+cd apps/web
+npm ci
+npm run build
+cd ../..
+.\scripts\start.ps1
+```
+
+浏览器访问 **http://127.0.0.1:8000**。前后端由同一个本地服务提供，Ctrl+C 停止；数据库默认在被忽略的 `data/agentops.sqlite3`。当前机器已经安装依赖并完成构建，再次启动只需执行 `scripts/start.ps1`。如果 PowerShell 执行策略限制脚本，可直接运行：
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
+```
+
+这是单用户本地应用，绑定回环地址；没有实现互联网部署所需的身份认证。`AGENTOPS_DB` 可指定其他本机数据库文件。前端开发时分别运行后端和 `apps/web` 下的 `npm run dev`，访问 5173 端口；修改后端 Python 代码后需重启服务，或在开发环境使用 Uvicorn `--reload`。
+
+## 首次体验与真实记录
+
+平台启动后，在另一个终端的项目根目录运行以下命令，再打开 CLI 输出的执行链接：
+
+```powershell
+.\.venv\Scripts\agentops.exe run --sample-kind synthetic --goal "本地工具任务" -- .\.venv\Scripts\python.exe examples/local_agent.py --delay 4
+```
+
+示例执行真实文件操作和测试，决策为确定性逻辑，不调用模型。添加 `--fail` 可演示“进程退出码为 0，但任务验收失败”。已有 Agent 的 `@tool` 接入、同任务多轮、补传与能力边界见 [V0.2 接入说明](docs/v0.2-agent-integration.md)。默认 spool 位于被忽略的 `.agentops/`，会话凭据有效期 24 小时。
+
+- 首页点击“载入演示样例”可直接打开失败 Run，沿页面查看历史报告和独立验收；样例始终标记为**合成演示**，不代表真实诊断效果。
+- 数据导入页选择 `manifest.json`，再选择该清单引用的 JSONL、报告、验收和反馈文件。示例清单位于 [tests/fixtures/demo/manifest.json](tests/fixtures/demo/manifest.json)。
+- 已有 SWE-bench 案例可以用 `scripts/prepare_history.py --source <案例目录> --out data/imports/<新目录>` 生成私有导入包。原始数据不修改；`provenance.local.json` 不上传、不提交。
+- 服务启动后也可执行 `.venv/Scripts/python.exe scripts/import_package.py data/imports/<目录>`。重复导入保持幂等；相同 Run 内容发生变化会被拒绝。
+- 单轮导入后直接打开 Run；多轮导入后打开 Task 历程，再进入具体 Run 或前后对照。Run 页按“执行事实 → 失败事实与证据 → 根因假设与证据 → 独立任务验收”阅读；完整轨迹和原始运行信息在“深入核查”中。来源未提供的证据、验收或报告会明确显示为空。
+
+不会读取 `.local/workspace.json` 自动扫描外部目录，也不会自动启动模型或运行日志中的命令。
+
+## 验证
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/integration -q
+cd apps/web
+npm run build
+```
+
+浏览器验收需要 Microsoft Edge。启动独立测试数据服务：
+
+```powershell
+$env:AGENTOPS_DB = "$PWD/.local/e2e.sqlite3"
+.\.venv\Scripts\python.exe -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8001
+```
+
+另开终端，在 `apps/web` 下执行 `npx playwright test`。测试使用合成夹具，检查导入、对照、证据跳转及窄屏布局；不会修改主工作区数据库。执行后在该终端移除 `AGENTOPS_DB` 环境变量或关闭终端，避免后续启动误用测试数据库。
+
+运行时校验源为 [contracts.py](apps/api/contracts.py)，可用 `scripts/export_contract.py` 更新 [JSON Schema](packages/contracts/import-manifest.schema.json)。后端 API 文档位于 `/docs`。
 
 ## 开发入口
 
 - [第一版开发计划](docs/v1-development-plan.md)：范围、模块、页面、阶段和验收标准。
-- [核心数据契约草案](docs/data-contract.md)：任务、执行、事件、验收和诊断之间的关系。
+- [V0.2 实时监控开发计划](docs/v0.2-development-plan.md)：接入边界、采集与传输、实时页面、开发顺序及验收清单。
+- [V0.2 接入与演示](docs/v0.2-agent-integration.md)：可执行命令、工具 SDK、补传及真实模型兼容性验收。
+- [V0.2 验收记录](docs/v0.2-validation.md)：协议、进程、浏览器检查与已知限制。
+- [V0.4 Run-centric 开发计划](docs/v0.4-development-plan.md)：工作流、状态边界与阶段验收。
+- [V0.4 验收记录](docs/v0.4-validation.md)：实际交付、自动化与浏览器验证、待办边界。
+- [核心数据契约](docs/data-contract.md)：任务、执行、事件、验收和诊断之间的关系。
+- [V0.1 验收记录](docs/v0.1-validation.md)：实现范围、真实数据联调与限制。
 - [Git 与资料管理](docs/repository-guide.md)：敏感资料、Git 检查与后续 GitHub 推送。
 - [task_plan.md](task_plan.md)：当前工作及开发阶段状态。
 - [findings.md](findings.md)：已核实事实与限制，主机标识已去除。

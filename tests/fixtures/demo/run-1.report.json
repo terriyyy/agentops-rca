@@ -1,0 +1,28 @@
+{
+  "run_meta": {
+    "final_status": "Submitted",
+    "ok": false
+  },
+  "findings": [
+    {
+      "type": "verification_gap",
+      "severity": "warn",
+      "title": "提交前的回归测试未通过",
+      "description": "合成演示：结果以独立验收文件为准。",
+      "evidence": [
+        {
+          "correlation_id": "shared-test",
+          "name": "bash"
+        },
+        {
+          "span_id": "not-recorded"
+        }
+      ]
+    }
+  ],
+  "rca": {
+    "result": {
+      "primary_cause": "演示诊断：修复未覆盖稀疏矩阵写入分支。"
+    }
+  }
+}

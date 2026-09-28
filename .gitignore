@@ -25,6 +25,7 @@ id_ed25519*
 /方案评估与架构建议.md
 /服务器实验记录与样例核查.md
 /.local/
+.agentops/
 /private/
 /scratch/
 .plan-attestation

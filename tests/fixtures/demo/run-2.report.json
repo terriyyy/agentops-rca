@@ -1,0 +1,68 @@
+{
+  "run_meta": {
+    "final_status": "Submitted",
+    "ok": false
+  },
+  "findings": [
+    {
+      "type": "verification_gap",
+      "severity": "info",
+      "title": "历史验收记录已通过",
+      "description": "合成演示：结果以独立验收文件为准。",
+      "evidence": [
+        {
+          "correlation_id": "shared-test",
+          "name": "bash"
+        }
+      ]
+    }
+  ],
+  "rca": {
+    "result": {
+      "primary_cause": "演示诊断：新增分支检查，回归测试通过。"
+    }
+  },
+  "hierarchical_trajectory_graph": {
+    "macro_nodes": [
+      {
+        "id": "context",
+        "label": "理解任务"
+      },
+      {
+        "id": "edit",
+        "label": "修复代码"
+      },
+      {
+        "id": "verify",
+        "label": "回归验收"
+      }
+    ],
+    "micro_nodes": [],
+    "edges": [
+      {
+        "source": "context",
+        "target": "edit",
+        "relation": "temporal_next"
+      },
+      {
+        "source": "edit",
+        "target": "verify",
+        "relation": "temporal_next"
+      }
+    ]
+  },
+  "runtime_memory": {
+    "required_actions": [
+      "提交前执行回归测试"
+    ]
+  },
+  "pipeline": {
+    "offline_model_bundle": {
+      "ok": false,
+      "reason": "合成演示不加载模型"
+    }
+  },
+  "next_iteration_feedback": {
+    "text": "保留测试结果作为验收证据。"
+  }
+}

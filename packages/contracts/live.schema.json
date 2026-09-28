@@ -1,0 +1,268 @@
+{
+  "create": {
+    "additionalProperties": false,
+    "properties": {
+      "request_id": {
+        "maxLength": 80,
+        "minLength": 16,
+        "title": "Request Id",
+        "type": "string"
+      },
+      "write_token": {
+        "maxLength": 128,
+        "minLength": 32,
+        "title": "Write Token",
+        "type": "string"
+      },
+      "task_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Task Id"
+      },
+      "goal": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "title": "Goal",
+        "type": "string"
+      },
+      "sample_kind": {
+        "default": "live",
+        "enum": [
+          "live",
+          "synthetic"
+        ],
+        "title": "Sample Kind",
+        "type": "string"
+      },
+      "adapter": {
+        "default": "python-sdk",
+        "enum": [
+          "python-sdk",
+          "process-only"
+        ],
+        "title": "Adapter",
+        "type": "string"
+      }
+    },
+    "required": [
+      "request_id",
+      "write_token",
+      "goal"
+    ],
+    "title": "CreateRun",
+    "type": "object"
+  },
+  "batch": {
+    "$defs": {
+      "LiveEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": "0.2",
+            "default": "0.2",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "event_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Event Id",
+            "type": "string"
+          },
+          "producer_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Producer Id",
+            "type": "string"
+          },
+          "producer_seq": {
+            "maximum": 20000,
+            "minimum": 1,
+            "title": "Producer Seq",
+            "type": "integer"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "tool_call",
+              "tool_return",
+              "llm",
+              "log",
+              "event",
+              "verification"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source_span_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Span Id"
+          },
+          "parent_source_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Source Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Correlation Id"
+          },
+          "input": {
+            "default": null,
+            "title": "Input"
+          },
+          "output": {
+            "default": null,
+            "title": "Output"
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ok"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Duration Ms"
+          },
+          "error_signature": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error Signature"
+          }
+        },
+        "required": [
+          "event_id",
+          "producer_id",
+          "producer_seq",
+          "occurred_at",
+          "kind",
+          "name"
+        ],
+        "title": "LiveEvent",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "events": {
+        "items": {
+          "$ref": "#/$defs/LiveEvent"
+        },
+        "maxItems": 100,
+        "minItems": 1,
+        "title": "Events",
+        "type": "array"
+      }
+    },
+    "required": [
+      "events"
+    ],
+    "title": "Batch",
+    "type": "object"
+  },
+  "finish": {
+    "additionalProperties": false,
+    "properties": {
+      "exit_code": {
+        "title": "Exit Code",
+        "type": "integer"
+      },
+      "reason": {
+        "default": "exit",
+        "enum": [
+          "exit",
+          "interrupted",
+          "launch_failed"
+        ],
+        "title": "Reason",
+        "type": "string"
+      },
+      "producers": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Producers",
+        "type": "object"
+      },
+      "dropped": {
+        "default": 0,
+        "minimum": 0,
+        "title": "Dropped",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "exit_code",
+      "producers"
+    ],
+    "title": "Finish",
+    "type": "object"
+  }
+}
