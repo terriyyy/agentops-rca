@@ -6,10 +6,12 @@ export const rowFailure = (row:TraceRow) => row.events.some(isFailure);
 export const rowDuration = (row:TraceRow) => row.kind==='tool_span'?(row.returned.duration_ms??(callInterval(row.call,row.returned)?eventTime(row.returned)!-eventTime(row.call)!:null)):(row.event.duration_ms??null);
 
 export const isFailure = (event:TraceEvent) => event.tool_status==='failed'||!!event.error_signature;
-export const kindLabel = (kind:string) => ({tool_call:'Tool · 调用',tool_return:'Tool · 返回',llm:'LLM',log:'Log',event:'Event',agent:'Agent'} as Record<string,string>)[kind]||kind;
+export const kindLabel = (kind:string) => ({tool_call:'Tool · 调用',tool_return:'Tool · 返回',llm:'LLM',log:'Log',event:'Event',agent:'Agent',verification:'Validation'} as Record<string,string>)[kind]||kind;
 export function durationLabel(ms:number|null|undefined) {
   if(ms==null||!Number.isFinite(ms)||ms<0)return '—';
-  return ms>=1000?`${(ms/1000).toFixed(2)} s`:`${Math.round(ms)} ms`;
+  if(ms>=1000)return `${(ms/1000).toFixed(2)} s`;
+  if(ms>0&&ms<1)return `${ms.toFixed(2)} ms`;
+  return `${ms<10?Number(ms.toFixed(1)):Math.round(ms)} ms`;
 }
 // A timezone is required. Imported timestamps are never replaced by import time.
 export function eventTime(event:TraceEvent) {
@@ -24,6 +26,28 @@ export function callInterval(event:TraceEvent,pair:TraceEvent|undefined) {
   // Inconsistent historical timestamps must not produce a confident duration bar.
   if(pair.duration_ms!=null&&Math.abs(end-start-pair.duration_ms)>Math.max(10,pair.duration_ms*.2))return null;
   return {start,end};
+}
+// The visible page uses a linear window over its recorded event times. A paired
+// tool's return is part of that window even though it shares one UI row.
+export function pageTimeWindow(rows:TraceRow[],runStart:number|null,runEnd:number|null) {
+  const times=rows.flatMap(row=>row.events.map(eventTime).filter((time):time is number=>time!==null));
+  if(times.length<2)return {start:runStart,end:runEnd,scope:'run' as const};
+  const start=Math.min(...times),end=Math.max(...times);
+  return end>start?{start,end,scope:'page' as const}:{start:runStart,end:runEnd,scope:'run' as const};
+}
+// Tick positions use the displayed window, while labels remain relative to the
+// beginning of the entire Run. Zooming therefore never resets the Run clock.
+export function timelineTicks(start:number|null,end:number|null,origin:number|null=start) {
+  if(start===null||end===null||end<=start)return [];
+  const range=end-start,rough=Math.max(1,range/4),power=10**Math.floor(Math.log10(rough));
+  const step=([1,2,5,10].find(factor=>factor*power>=rough)||10)*power;
+  const base=origin??start,firstOffset=Math.ceil((start-base)/step)*step;
+  const count=Math.min(6,Math.floor((end-base-firstOffset)/step)+1);
+  return Array.from({length:count},(_,index)=>{
+    const offset=firstOffset+index*step,seconds=offset/1000;
+    const label=offset===0?'0 ms':offset>=1000?`${Number.isInteger(seconds)?seconds:Number(seconds.toFixed(Math.max(0,3-Math.floor(Math.log10(step)))))} s`:`${Math.round(offset)} ms`;
+    return {offset,percent:(base+offset-start)/range*100,label};
+  });
 }
 export function objectValue(value:unknown):Record<string,unknown> {
   if(typeof value==='string'){try{return objectValue(JSON.parse(value));}catch{return {};}}

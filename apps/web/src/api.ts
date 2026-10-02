@@ -38,7 +38,7 @@ export interface Diagnosis {
   graph: {macro_nodes?: Record<string, unknown>[]; micro_nodes?: Record<string, unknown>[]; edges?: Record<string, unknown>[]; statistics?: Record<string, unknown>} | null;
   runtime_memory: unknown; guidance: string | null;
 }
-export interface Outcome {outcome_id: string; status: string; source: string; basis: unknown; summary: string; authoritative: boolean; evidence_id: string; reward: number | null}
+export interface Outcome {outcome_id: string; status: string; source: string; basis: unknown; summary: string; authoritative: boolean; evidence_id: string; reward: number | null; source_kind?:string; verification_origin?:string; observed_at?:string|null}
 export interface Evidence {evidence_id: string; filename: string; line: number | null; json_pointer: string | null; resolution_status: string; sha256: string; content: unknown; event_id: string | null}
 export interface ImportResult {import_id: string; task_id: string; run_ids: string[]; duplicate: boolean; warnings: string[]; created_at: string; manifest: {task_id: string; sample_kind: string; source_namespace: string}}
 

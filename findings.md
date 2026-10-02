@@ -1,5 +1,86 @@
 # 方案审查发现
 
+## 2026-10-02：团队交接核对
+
+- 本地可达历史3提交：权重/私有配置/数据库路径无命中，无>=10MiB对象；常见key/token/私钥模式无命中，URL凭据唯一命中为测试拒绝样例。未fetch、未审查远程可见性/其他分支附件，本结果不能保证GitHub全范围安全。.local/team-handoff-git-audit.json保留本地摘要，不含密钥。
+- 缓存origin/main与本地main无提交差异，但最新V0.4前端增量未提交，交接前需由用户另行授权审查提交/推送，成员才能clone到最新结果。
+- 本机真实bundle只含manifest.json和hgt_normal_model.pt；源码loader使用torch.load(...weights_only=False)，只应对获授权可信来源运行配置检查，不能以自行计算hash代替来源认证。跨平台独立虚拟环境/注册配置，Linux轮子与服务器安装待实测。
+
+- .gitignore已有.env、.local、vendor、models、checkpoints、pt/pth/ckpt/safetensors及数据库/日志忽略；GitHub官方说明忽略不作用于已跟踪文件，删除工作树文件也不能清除历史。需要核对本地可达历史，不能仅凭规则宣布远程安全。
+- configure-diagnosis.py使用独立Python、可信AgentTether源码根、包含manifest.json与hgt_normal_model.pt的bundle及独立可信权重SHA-256；成功才保存本机.local/diagnosis-config.json。配置不能跨Windows/Linux直接复制。
+- 当前诊断worker在API所在主机直接启动子进程，非远程HGT服务；本地前端+服务器API可通过SSH转发联调，但本地API没有远程权重路径/推理后端自动接入能力。Vite /api代理固定127.0.0.1:8000。
+- API是无产品身份认证的单用户本地应用，一Uvicorn worker/独立数据库；226共享开发应各自目录/端口/库或指定一个集成实例，不能各成员在同目录并发改源码或多个API写一库。Linux安装与服务器真实路径尚未验证。
+- Git LFS解决大文件传输，不是隐私隔离；本任务建议私下、获授权的依赖分发，不把权重改上传LFS。官方来源：https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-git-large-file-storage；https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository。
+
+## 2026-09-30：Run分析面板实施核对
+
+- useRunAnalysis集中当前Run报告、配置、作业、选定报告、预览和操作锁；Workspace引用也直接使用同一报告集合，不再重复拉取。作业历史改为消费相同jobs，technical只按需展示。
+- Run首屏提供分析/查看动作；Selected Error和失败任务检查可进入同一Run面板。两主Tab为原因分析/任务检查，分析记录计数明确为报告数；更多资料和完整报告使用原生dialog抽屉，Escape关闭并恢复焦点。
+- 检查source_kind已核对normalizer实际值outcome/report/telemetry及live上报；补充前端可选类型，不改API。冲突与unknown使用Run投影，历史报告不能写任务结论。
+- 1366/1920实看正式Run截图：白底、实心蓝/失败红；bar像素宽度与before完全一致。检查一条记录时dock180px，原因面板260px，均无页面溢出；检查来源标明平台未复跑。
+- 摘要用实际DOM溢出检测控制原文展开入口，证据移到摘要后；关键限制保留于有界滚动面板。全文、全部字段JSON及原件在按需资料中保留。没有前端模型摘要或语义改写。
+- 新增测试覆盖选中不改类型色/失败色、不改时间几何，报告历史/全文/上下文，关闭/过期预览与手动定位。额外核对冲突结果、缺采集/配置与未解析引用；模型调用使用Mock，真实HGT仅本机离线。
+
+## 2026-09-30：纯白背景与实心 Timeline 条补充调研（完成，实施待办）
+
+- 用户新增要求：总体基础背景为纯白；Timeline条提高饱和度和对比度，采用实心填充；仅写入规划，尚未实施。
+- 当前styles.css根背景为#f7f8fa；run-console已是#fff，但局部表头/底部栏/日志背景和低饱和时间条形成灰淡观感。duration-bar为#a9ccd3、失败#e4aaa0、选中#91b4dd，问题不只是透明度；不应错误声称所有时间条都使用opacity。
+- Datadog官方Trace View明确区间长度表达相对耗时、颜色默认按service（也可host/container）、错误可高亮。Grafana官方Trace View提供共享时间线和critical path深色段；本项目没有关键路径数据，不能借深色段伪造关键路径。
+- 已核对真实界面截图/源码，确定类型与状态的颜色优先级、背景范围和验收标准，新增D2V并入现有实施顺序；细则见docs/v0.4-white-surface-solid-timeline.md。
+
+- 已实际重看之前保存的Datadog官方控制台截图：白底共享时间区间、实心黄/蓝/绿/紫条、错误红标；Langfuse公开Trace实测截图中SPAN为蓝条、generation为粉紫条、选中行有浅色底。不是以营销配图猜样式。
+- 固定Langfuse源码TimelineDense约1569–1578行明确：hue表示类型，选中使用ring，不能因hover/selected将GENERATION改成代表SPAN的蓝色。默认可见bar不应因状态选择变透明；本项目采纳稳定类型色+轮廓，失败采用独立红标。
+- 研究访问记录：Datadog直接open及猜测Langfuse trace-timeline路径抓取失败；Datadog搜索返回的官方文档可读，并有已保存官方界面截图；Langfuse使用固定源码/既有公开Trace截图。不声称本轮新登录控制台或取得Codex实际背景色值。
+- 计划采用#fff全站基础画布；Run白底共享轴，类型实心色、失败红、选中浅行底+深轮廓，保留类型标签/错误图标。Tool可靠区间为条，LLM仅响应/普通日志/检查记录仍为点；不按名字造LLM Span，不画critical path。
+- 候选色值的理论对比度已按sRGB计算：六种bar/point颜色对白底均超过4.5:1，对建议#EAF2FF选中底均超过4:1。该计算不是界面验收；实施仍需检查实际computed style、alpha与截图。用户要求纯白基础画布，不等于清除所有语义交互底色。
+
+## 2026-09-30：原因分析与任务检查开发规划
+
+- 固定实施方向：Run首屏分析动作 + 底部原因分析/任务检查；分析记录计数指报告数量，技术资料进入次级入口。Tab和折叠本身不是问题，改造重点为用户目的、入口权重和按需证据。
+- 已核对实际代码：RunWorkspace当前三种DockMode及244px默认高度；DiagnosisControls已有eligible、成功HGT前提、GET预览、确认POST及快照哈希绑定。首屏入口复用同一生命周期，不另起模型流程或放宽资格。
+- 推荐先整理当前Run状态与操作控制，再改入口/容器、结果/证据、引导预览；防止首页式“已有报告却显示未分析”的投影漂移在新入口复现。旧报告和新作业失败必须共存。
+- 前端可以组织已有summary/findings/guidance/boundary/outcomes，但不能安全改写所有历史自由文本。原文按需保留，重要不确定性可见；模型内容契约作为单独延期项。
+- 所有证据用既有openEvidence解析与回跳；逻辑Span合并不删除调用/返回原件。检查缺actual/expected时明确缺失；报告来源与独立测试来源区别保留。
+- D0–D5与验收场景已写入docs/v0.4-run-analysis-development-plan.md。无需新增后端接口/持久化实体；本轮只规划，前一轮未提交的产品代码保持原状。
+
+## 2026-09-30：底部诊断/任务检查面板调研
+
+- Sentry官方2025-05截图已实看：Issue右侧Seer Initial Guess短句+明显Find Root Cause按钮；当前2026-09 Autofix文档核对阶段、支持证据链到代码/遥测。年份区分，不将旧图当当前像素模板。
+- 本地API持久化 RCA 已含 findings.description（failed_assumption）、evidence_chain（ID引用而非自然语言因果路径）、guidance、verification_suggestion、boundary；可先用现有字段分块，但不能凭字符串变成已证明的因果链。prompt只要求简体中文和specific hypothesis，不约束短句/篇幅，文案过长不仅是CSS问题。
+- 建议方向：首屏Trace上方Run级“分析失败原因”+失败上下文第二入口，底部保留可调高工作面板但改“原因分析/任务检查”两种用户意图，技术资料进入次级菜单。保持右侧只服务选中事件，避免1366px再常驻第三列。
+- 原因结果分“已知事实/可能原因/相关证据/下一步检查”，待验证标记一次，未知具体说明；不能把模型摘要短句化成更强结论。任务检查先结果、依据、来源，缺少actual不编造，验收通过不自动验证诊断。
+- 不使用研究平台的自动诊断/修复/PR、聊天或HypothesisTree能力作为当前功能。扩大RCA可发现性与执行付费推理独立。
+
+
+- 已实际浏览官方产品界面截图：Datadog Trace View 显示主图+可调高度的selected-span tabs；LangSmith Chat官方图是Dataset右侧侧栏（只能证明侧栏模式，Trace适用性来自文档）；Sentry 2026-09-21 Code Changes显示阶段折叠、带日期/状态的反馈时间线与CI失败；GitHub Actions官方失败日志图是按step展开+行号，不是全篇报告。
+- 不笼统声称“成熟产品不用tab/折叠”：Datadog有context tabs，Langfuse有Scores tab；Sentry有阶段展开。可借鉴的是对象、权重与按需证据，而不是控件禁用。
+- 证据类型必须区分：实际访问Langfuse公开Trace（上一轮）、本轮官方界面截图、官方操作流程；未登录Sentry/Datadog/LangSmith客户控制台，未触发分析或模型调用。
+
+
+- 当前 DiagnosisPanel 原样铺 summary、boundary、guidance、verification_suggestion；重复诊断状态和待验证说明，前三条证据 ref.label 可仅为事件ID。根因假设计数实际 report_count，含历史/定位/模型报告，不能当作独立根因数量。
+- DiagnosisControls 暴露 HGT/analyst 前置条件；RCA 预览必须有 succeeded offline_hgt 作业，GET预览不调用模型、确认才POST analyst-jobs。提升入口不能绕过条件。
+- OutcomePanel 只有 status/source/basis/summary/evidence，不含 expected/actual 结构字段；可呈现断言，不能从 assertion failed 编造实际输出。检查来源可能为独立文件，也可能为报告/遥测，不能一律标为独立测试。
+- 官方资料核对：Sentry Autofix RCA/方案/代码是阶段、支持展开证据；Datadog错误Trace提供就地调查入口；LangSmith Chat是trace上下文侧栏（原Polly）；Langfuse确实使用Scores tab。问题不是tab/折叠本身，而是入口、三者等权、默认全文和语义。
+- 研究访问限制：部分web抓取Sentry/Datadog失败，改真实Edge浏览官方文档。Sentry issue-fix 重定向到 autofix；猜测Datadog /bits_ai/trace_analysis 返回404，需从TraceView真实链接查找。读取长文时本机GBK不能编码特殊字符，后续只输出精简字段并使用UTF-8。
+
+
+## 2026-09-30：Langfuse Timeline 研究（已实际核查）
+
+- 真实 Edge 浏览器访问用户提供的 public project 首页与 Traces 列表：页面先 Redirecting，最终跳转 /auth/sign-in，需要登录；未尝试绕过访问控制。静态抓取只返回 Loading。
+- GitHub REST API 触发匿名限流，改为 filter=blob:none 的只读 Git 克隆至被忽略的 .local/research/langfuse。固定研究源码提交为 646c15a60ebeeda0f0a2b6c92bfb1f9e3adab82e。
+- 当前源码存在 TraceTimelineDense/TimelineDense.tsx、TraceTimelineCompact.tsx、TraceTree.tsx 与 timeline/layout/viewTransform/viewport 等纯展示计算。官方 Trace URLs 文档提供无需登录的 public 单条 Trace；已通过官方文档给出的单条公开 Trace 访问真实详情。
+- 实际进入官方公开 Trace 2d6b96f2-0a4d-4366-99a5-1ad558c66e99 成功：3.09 秒，Tree/Timeline/Graph 切换；qa→retrieval→vector-store/context-encoding 的真实层级、WARNING、generation 及固定右侧 Preview/Log View 可见。此单条 Trace 无需登录，项目目录页仍需登录。
+- 固定版本 dense 源码通过共同 selectedId 和 onSelect 联动详情；统一时间坐标支持 fit/focus/zoom/pan。density.ts 指定鼠标行高约26px、触摸44px，bar 通常约0.6行高，标签12/13px；本项目用户要求更大可读字号，采用更宽松行高，不照搬密度值。
+
+- 已实际切换 Timeline 并点击 generation：选中行与 bar 同步高亮、右侧更新同一 observation 的 Preview/Log View；共享垂直刻度贯穿各行，不存在每行灰色 track。真实浏览器量测行高26px、bar18px；成功操作 Zoom in 与 Fit whole trace，轴窗口从0–4秒变为2–4秒再恢复。
+- 本项目采取42px单行、14px步骤名、13px详情正文；不伪造 TRACE根节点、GENERATION区间或缺失的 parent。公开项目列表需登录与公开单条 Trace 可访问的事实区分保留。
+
+## 2026-09-28：长 Run 时间轴比例尺
+
+- 用户截图对应的导入 Run 有 784 原始事件，来源时间总跨度约 868.25 秒。前 100 条事件只覆盖约 65.3 秒；其中工具耗时从约 0.1 秒到 21.52 秒。以整轮时间为唯一线性轴，绝大多数区间必然被压到数像素。
+- 当前列表一次只展示 50 个逻辑行，故可对这些行的真实事件时间单独确定线性窗口，保持条形的起点和长度同一比例。轴标签仍从 Run 起点算，必须显示“本页 / 整轮”当前范围以免误读。
+- 只有可靠调用/返回双端时间能画区间。仅提供 `duration_ms` 的普通事件或不一致的配对仍只画时间点；不能为改善观感虚构开始时间或拉伸毫秒级耗时。
+
 ## 2026-09-27：Run Detail 视觉审查后的实现依据
 
 - 当前 `RunPage` 把 01–05 的章节说明、四列等权状态、失败列表、报告卡、验收卡纵向串联；完整轨迹排在最末尾。失败 Run 首屏不能同时查看关键线索与相邻事件，原始证据以抽屉打开后需要往返。
@@ -172,3 +253,11 @@
 - 前端现有 API 未直接返回关联 link 列表，UI 只能按上述明确 ID 保守重建显示；无 ID、重复、不同名、顺序反常及冲突父 ID 均保留原始行。聚合行映射回 call 与 return 的原始 event_id，返回事件证据引用也能定位到该行。
 - 当前 `RunWorkspace` 已有限高可收起 dock，但 `DiagnosisPanel` 默认展开报告 Findings、指导与作业历史，Run Page 技术入口另开临时 tab，导致下半部仍像长文档。已改为常驻三 tab，假设只显示摘要/关键引用/边界与建议，完整报告手动展开；作业历史和算法原件在技术详情折叠。
 - 两个相同时间戳不能证明 0ms 区间，只有结束时间严格晚于开始且与来源 duration 一致时才画时间条；来源自己给的 duration 仍可作为数值展示。
+
+## 2026-09-28 状态配色与时间轴续改
+
+- 当前 1366px 工作区左侧轨迹宽约 680px；时间列使用 `minmax(70px,.55fr)`，刻度只有左右与中点三枚，文本很浅，span 区间条 7–9px 高但颜色与选中/失败区分不足。
+- `traceModel` 已只从带时区的 `occurred_at` 建立 Run 时间域，`callInterval` 仅对唯一明确关联、严格递增且与来源 duration 一致的 Call/Return 返回区间。可强化这些已验证区间的 bar；普通事件仍只能绘时刻点，不能根据单条 `duration_ms` 猜测起止。
+- 来源字段已有四类顶部状态、`kind`、`tool_status`、报告引用 event_id；可以在前端派生只用于样式的状态与 referenced row，无需新增 API 或改写事实。
+- 浏览器实测旧刻度与行内时间背景相差约 8.7px，根因是刻度位于滚动容器外，行内容受稳定滚动条预留宽度影响。已把刻度行移入轨迹滚动容器并设 sticky；专项浏览器断言两者左边缘差小于 1px。
+- 1366×768 与 1920×1080 截图核查：状态带使用克制的蓝/绿/红/紫/灰点；工具、LLM、日志、验证类型只在小图标底色区分。唯一可靠的工具区间显示有起点/长度的 bar，失败尾端红色终点；普通事件为点，缺时间不画轴点。

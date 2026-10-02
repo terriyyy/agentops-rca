@@ -26,8 +26,8 @@ test('CLI → 工具开始先于结束 → 实时轨迹 → 验收证据 → 刷
     await expect(page.locator('.run-status')).toContainText('完整');
     await expect(page.locator('.run-status')).toContainText('执行完成');
     await expect(page.locator('.run-status')).toContainText('验收未通过');
-    await page.getByRole('tab',{name:/^独立验收/}).click();
-    await page.getByRole('button',{name:'追溯验收记录',exact:true}).click();
+    await page.getByRole('tab',{name:/^任务检查/}).click();
+    await page.getByRole('button',{name:'查看检查记录',exact:true}).click();
     await expect(page.locator('.source-code')).toContainText('python-assertion');
     await page.keyboard.press('Escape');
     await page.reload();

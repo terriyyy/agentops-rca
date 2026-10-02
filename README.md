@@ -6,7 +6,7 @@ V0.1 历史工作台与 V0.2 实时监控已实现：历史导入、命令启动
 
 V0.4 将入口改为以 Run 为中心的工作台：首页直接展示正在运行和需要处理的 Run；Run 详情使用执行轨迹主视图、固定选中事件详情和 Run 级根因假设／独立验收面板；Task 页只承担同一目标下的多轮历史与前后对照。执行完成不代表任务验收通过，诊断报告也不改变验收结论。
 
-V0.3 使用与能力限制见 [离线 HGT 验收说明](docs/v0.3-validation.md)和 [analyst RCA 验收说明](docs/v0.3-analyst-validation.md)。在已结束 Run 的“根因假设与证据”区域，先运行 HGT，再预览实际发送内容并手动确认 RCA。新环境可复制 `.env.example` 并在本机填写已授权的模型服务配置；没有配置时仍可使用监控和离线能力。
+V0.3 使用与能力限制见 [离线 HGT 验收说明](docs/v0.3-validation.md)和 [analyst RCA 验收说明](docs/v0.3-analyst-validation.md)。在已结束 Run 的 Trace 工具栏进入“分析失败原因（RCA）”，或查看已有原因分析；先手动定位异常步骤，再预览实际发送内容并确认模型调用。底部“原因分析 / 任务检查”分别保留假设和独立检查，完整报告、分析记录与技术资料按需打开。新环境可复制 `.env.example` 并在本机填写已授权的模型服务配置；未配置模型仍可监控，真实离线 HGT 另需可信算法源码与权重。
 
 ## 启动
 
@@ -70,6 +70,7 @@ $env:AGENTOPS_DB = "$PWD/.local/e2e.sqlite3"
 
 ## 开发入口
 
+- [团队开发交接](docs/team-development-handoff.md)：成员无权重开发、私有算法依赖分发、226服务器隔离联调、SSH转发及Git核查边界。
 - [第一版开发计划](docs/v1-development-plan.md)：范围、模块、页面、阶段和验收标准。
 - [V0.2 实时监控开发计划](docs/v0.2-development-plan.md)：接入边界、采集与传输、实时页面、开发顺序及验收清单。
 - [V0.2 接入与演示](docs/v0.2-agent-integration.md)：可执行命令、工具 SDK、补传及真实模型兼容性验收。
