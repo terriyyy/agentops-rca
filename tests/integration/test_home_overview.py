@@ -59,6 +59,7 @@ def test_feedback_usage_and_checks_remain_independent_and_read_only(tmp_path):
         assert summary['running'] == 1 and summary['attention'] == 1
         assert summary['tokens'] == {'value':10,'responses':1,'with_total':1,'uncertain_events':0}
         assert summary['sample']['count'] == 1
+        assert summary['sample']['items'][0]['time'] == {'recorded_ms':4000,'timed_events':5}
         assert feedback['events'] == 5
         assert feedback['tools'] == {'observed':1,'paired':1,'failed':1,'unpaired_calls':0}
         assert feedback['model_responses'] == feedback['with_total'] == feedback['outcomes'] == 1
@@ -78,3 +79,22 @@ def test_empty_feedback_does_not_claim_an_agent_is_connected(tmp_path):
         feedback=client.get('/api/overview?source=live&include_summary=true').json()['summary']['feedback']
         assert feedback['run']['run_id'] == run_id
         assert feedback['events'] == feedback['tools']['observed'] == feedback['model_responses'] == feedback['outcomes'] == 0
+        assert client.get('/api/overview?source=live&include_summary=true').json()['summary']['sample']['items'][0]['time'] == {'recorded_ms':None,'timed_events':0}
+
+
+def test_home_source_time_matches_run_metrics_and_stays_bounded(tmp_path):
+    with TestClient(create_app(tmp_path/'time.sqlite3')) as client:
+        old, _ = create(client)
+        run_id, headers = create(client)
+        # Logs extend past the LLM response; this is not the LLM-only time range.
+        events = [{'event_id':uuid4().hex,'producer_id':'time','producer_seq':index+1,
+                   'kind':kind,'name':name,'occurred_at':time}
+                  for index,(kind,name,time) in enumerate([
+                      ('llm','LLM_RESPONSE','2026-10-04T00:00:02Z'),
+                      ('log','stdout','2026-10-04T00:00:12+00:00')])]
+        assert client.post(f'/api/live/runs/{run_id}/events',headers=headers,json={'events':events}).status_code == 200
+        summary = client.get('/api/overview?source=live&limit=1&include_summary=true').json()['summary']
+        assert len(summary['sample']['items']) == 1
+        assert summary['sample']['items'][0]['run_id'] != old
+        assert summary['sample']['items'][0]['time'] == {'recorded_ms':10000,'timed_events':2}
+        assert summary['sample']['items'][0]['time'] == client.get(f'/api/runs/{run_id}/metrics').json()['time']

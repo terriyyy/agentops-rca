@@ -10,6 +10,8 @@ import type {RunAnalysis} from './run-analysis';
 import {AnalysisPanel,CheckPanel,ReportView} from './run-panels';
 import { RunWorkspace } from './run-workspace';
 import {CaptureFeedback,HomeOverview,MonitorStart,homeSources} from './home-overview';
+import {RunViewContext,useRunViewState} from './run-view';
+import {HomeRunSection as HomeSection} from './home-run-list';
 
 function useData<T>(url: string, refresh = 0) {
   const [state, setState] = useState<{url:string;data: T | null; error: string; loading: boolean}>({url,data:null,error:'',loading:true});
@@ -54,11 +56,13 @@ function EvidenceDrawer({id, close, investigation=false}: {id:string; close:()=>
 function Shell() {
   const [evidence,setEvidence]=useState<string|null>(null);
   const location=useLocation();
+  const view=useRunViewState(),isRun=location.pathname.startsWith('/runs/');
+  useEffect(()=>{if(!isRun)view.setFocus(false);},[isRun]);
   const health=useData<{version:string;status:string}>('/health');
   useEffect(()=>{setEvidence(null);window.scrollTo(0,0);},[location.pathname]);
   const section=location.pathname.startsWith('/imports')?'数据导入':location.pathname.startsWith('/system')?'运行环境':location.pathname.startsWith('/tasks')?'任务历程':location.pathname.startsWith('/runs')?'运行详情':'运行工作台';
-  return <EvidenceContext.Provider value={setEvidence}><div className={"app-shell"+(location.pathname.startsWith("/runs/")?" run-shell":"")}>
-    <aside className="sidebar"><Link to="/" className="brand"><div className="brand-mark"><GitBranch size={22}/></div><span>agentops<span className="brand-suffix"> / RCA</span></span></Link>
+  return <RunViewContext.Provider value={view}><EvidenceContext.Provider value={setEvidence}><div className={"app-shell"+(isRun?" run-shell":"")+(isRun&&view.focus?" run-focus":"")}>
+    <aside className="sidebar" hidden={isRun&&view.focus}><Link to="/" className="brand"><div className="brand-mark"><GitBranch size={22}/></div><span>agentops<span className="brand-suffix"> / RCA</span></span></Link>
       <div className="workspace-label"><div className="workspace-avatar">A</div><div>本地工作区<small>任务与诊断</small></div><span className="workspace-dot"/></div>
       <nav><NavLink to="/" end aria-label="运行工作台"><Activity size={18}/><span className="nav-text">运行工作台</span></NavLink><NavLink to="/tasks" aria-label="任务历程"><Layers3 size={18}/><span className="nav-text">任务历程</span></NavLink><NavLink to="/imports" aria-label="数据导入"><ArrowDownToLine size={18}/><span className="nav-text">数据导入</span></NavLink><NavLink to="/system" aria-label="运行环境"><Settings2 size={18}/><span className="nav-text">运行环境</span></NavLink></nav>
 <div className="sidebar-foot"><span className={`connection-dot ${health.error?'offline':''}`}/><span>{health.error?'API 未连接':health.loading?'正在连接…':'本地 API 已连接'}</span><code>v{health.data?.version||'0.1'}</code></div>
@@ -66,24 +70,7 @@ function Shell() {
     <div className="workspace-main"><header className="topbar"><div><span>AgentOps</span><ChevronRight size={14}/><strong>{section}</strong></div><div><span className="local-pill"><Database size={13}/> LOCAL</span><span className="avatar">研</span></div></header>
       <main><Routes><Route path="/" element={<HomePage/>}/><Route path="/tasks" element={<TasksPage/>}/><Route path="/tasks/:taskId" element={<TaskPage/>}/><Route path="/tasks/:taskId/compare" element={<ComparePage/>}/><Route path="/runs/:runId" element={<RunPage/>}/><Route path="/imports" element={<ImportsPage/>}/><Route path="/system" element={<SystemPage/>}/><Route path="*" element={<Empty title="页面不存在"><Link to="/">返回运行工作台</Link></Empty>}/></Routes></main>
       <footer>AGENTOPS / RCA <span>实时与历史工作台 · 所有验收结果保留来源</span></footer>
-    </div>{evidence&&<EvidenceDrawer id={evidence} close={()=>setEvidence(null)} investigation={location.pathname.startsWith('/runs/')}/>}</div></EvidenceContext.Provider>;
-}
-
-function HomeRun({run}: {run:Run}) {
-  return <Link className="workbench-run" to={'/runs/'+run.run_id}>
-    <div className="workbench-run-main"><strong>{run.task_goal||run.task_external_id||run.external_run_id}</strong><span>第 {run.attempt_index} 次运行 · {new Date(run.created_at).toLocaleString('zh-CN')}</span></div>
-    <SourceLabels run={run}/>
-    <div className="workbench-run-states"><span>执行：{executionNames[run.execution_status]||'未知'}</span><span>验收：{outcomeNames[run.outcome_status]||'未知'}</span><span>诊断：<DiagnosisLabel run={run}/></span></div>
-    {!!run.insight?.attention_reasons.length&&<div className="workbench-reasons">{run.insight.attention_reasons.map(reason=><span key={reason}>{attentionNames[reason]||reason}</span>)}</div>}
-    {run.origin==='live'&&run.execution_status==='running'&&<small>采集器：{run.capture_status==='connected'?'在线':run.capture_status==='disconnected'?'失联，执行状态未确认':'连接中'} · 数据：{run.capture_integrity==='pending'?'接收中':run.capture_integrity||'未知'}</small>}
-    <ArrowUpRight size={17}/>
-  </Link>;
-}
-
-function HomeSection({title,description,runs,empty,id,count}: {title:string;description:string;runs:Run[];empty:string;id?:string;count?:number}) {
-  return <section className="panel workbench-section"><div className="section-heading"><div><h2 id={id} tabIndex={-1}>{title} <span className="counter">{count??runs.length}</span></h2><p>{description}{count!==undefined&&count>runs.length&&` 当前显示最近 ${runs.length} 条。`}</p></div></div>
-    {runs.length?<div>{runs.map(run=><HomeRun key={run.run_id} run={run}/>)}</div>:<p className="workbench-empty">{empty}</p>}
-  </section>;
+    </div>{evidence&&<EvidenceDrawer id={evidence} close={()=>setEvidence(null)} investigation={location.pathname.startsWith('/runs/')}/>}</div></EvidenceContext.Provider></RunViewContext.Provider>;
 }
 
 function HomePage() {
@@ -104,12 +91,12 @@ function HomePage() {
     <div className="home-scope-bar"><label>记录来源<select aria-label="记录来源" value={source} onChange={event=>setSource(event.target.value as HomeSource)}>{Object.entries(homeSources).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label><span>状态为当前数量 · 用量取最近 20 次入库记录</span><small>{loading?'正在读取…':error?'更新失败':updated?`自动刷新 · ${updated}`:'等待数据'}</small><button className="home-refresh" onClick={()=>setRefresh(value=>value+1)}>刷新</button></div>
     {error&&<div className="home-refresh-error" role="alert">{data?'刷新失败，保留上次数据。':'无法读取运行记录。'} {error}<button className="text-button" onClick={()=>setRefresh(value=>value+1)}>重试</button></div>}
     <HomeOverview key={source} summary={summary} onSection={section}/>
-    {summary?.all_runs===0?<section className="home-first-use"><div><h2>让你的第一次运行出现在这里</h2><p>选择接入方式 → 在终端启动 → 打开 Run 链接。也可以先查看无模型演示。</p></div><button className="button" onClick={openStart}>查看接入步骤<ArrowUpRight size={15}/></button></section>:summary&&<CaptureFeedback summary={summary} renderSource={run=><SourceLabels run={run}/>}/>}
+    {summary?.all_runs===0?<section className="home-first-use"><div><h2>让你的第一次运行出现在这里</h2><p>选择接入方式 → 在终端启动 → 打开 Run 链接。也可以先查看无模型演示。</p></div><button className="button" onClick={openStart}>查看接入步骤<ArrowUpRight size={15}/></button></section>:summary&&<CaptureFeedback onStart={openStart} summary={summary} renderSource={run=><SourceLabels run={run}/>}/>}
     {summary&&summary.total_runs===0&&summary.all_runs>0&&<p className="home-dialog-scope">“{homeSources[source]}”下暂无记录；其他来源已有 {summary.all_runs} 次运行。<button className="text-button" onClick={()=>setSource('all')}>查看全部来源</button></p>}
     {loading&&!data?<Loading/>:data&&<div className="workbench-sections">
-      <HomeSection id="home-running" count={summary?.running} title="正在运行" description="打开 Run 查看实时采集的步骤。" runs={data.running} empty="所选来源下没有正在运行的 Agent。"/>
-      <HomeSection id="home-attention" count={summary?.attention} title="需要处理" description="执行异常、检查未通过、采集不完整或诊断作业失败。" runs={data.attention} empty="所选来源下暂时没有需要处理的运行。"/>
-      <HomeSection id="home-recent" title="其他最近运行" description="已在上方出现的 Run 不重复列出；按入库顺序排列。" runs={data.recent} empty="暂无其他运行记录。"/>
+      <HomeSection samples={summary?.sample.items} renderSource={run=><SourceLabels run={run}/>} id="home-running" count={summary?.running} title="正在运行" description="打开 Run 查看实时采集的步骤。" runs={data.running} empty="所选来源下没有正在运行的 Agent。"/>
+      <HomeSection samples={summary?.sample.items} renderSource={run=><SourceLabels run={run}/>} id="home-attention" count={summary?.attention} title="需要处理" description="执行异常、检查未通过、采集不完整或诊断作业失败。" runs={data.attention} empty="所选来源下暂时没有需要处理的运行。"/>
+      <HomeSection samples={summary?.sample.items} renderSource={run=><SourceLabels run={run}/>} id="home-recent" title="其他最近运行" description="已在上方出现的 Run 不重复列出；按入库顺序排列。" runs={data.recent} empty="暂无其他运行记录。"/>
     </div>}
     {start&&<MonitorStart close={()=>setStart(false)} demo={demo} busy={busy} error={actionError}/>}
   </div>;

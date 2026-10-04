@@ -32,6 +32,10 @@ test('首页来源、实时接入反馈、用量范围及点击联动',async({pa
   await expect(feedback).toContainText('事件交付：完整');
   const row=page.locator('.workbench-run[href="/runs/'+run.run_id+'"]');
   await expect(row).toContainText('执行：执行完成');await expect(row).toContainText('验收：验收未通过');
+  await expect(row).toContainText('已记录时长：4.00 s');
+  await expect(row).toContainText('Agent Token：12');
+  await expect(feedback.locator('.home-capture-state')).toHaveText('执行结束');
+  await expect(feedback.locator('.home-capture-state')).not.toHaveClass(/warning/);
   await page.getByRole('region',{name:'运行概览'}).getByRole('button',{name:/已记录 Token/}).click();
   const dialog=page.getByRole('dialog',{name:'最近运行的用量'});
   await expect(dialog).toContainText('最近 20 次入库记录');
@@ -45,6 +49,43 @@ test('首页来源、实时接入反馈、用量范围及点击联动',async({pa
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
   expect(paid).toBe(0);expect(errors).toEqual([]);
+});
+
+test('接入阶段、检查结果和诊断状态独立，样本外用量不冒充未记录',async({page,request})=>{
+  const created=await create(request);
+  const run=(await (await request.get('/api/runs/'+created.run_id)).json());
+  run.task_goal='很长的任务名称 '.repeat(30);
+  run.insight={diagnosis:{state:'hypothesis',report_count:1,report_kinds:['rca'],featured_report:null,latest_job:{job_id:'job',mode:'analyst',state:'failed',error:'fixture'}},failure_signals:[],attention_reasons:['task_failed','diagnosis_job_failed']};
+  let value={running:[run],attention:[],recent:[],summary:{source:'live',running:1,attention:0,total_runs:1,all_runs:1,sample:{limit:20,count:0,items:[]},tokens:{value:null,responses:0,with_total:0,uncertain_events:0},feedback:{run,events:0,tools:{observed:0,paired:0,failed:0,unpaired_calls:0},model_responses:0,with_total:0,outcomes:0}}};
+  await page.route('**/api/overview?*',route=>route.fulfill({json:value}));
+  await page.goto('/');
+  const feedback=page.getByRole('region',{name:'接入反馈'}),row=page.locator('.home-run-row').first();
+  await expect(feedback.locator('.home-capture-state')).toHaveText('等待上报');
+  await expect(row).toContainText('待验证假设');await expect(row).toContainText('最近作业失败');
+  await expect(row.locator('.home-run-number').first()).toContainText('不在样本内');
+  await expect(row.locator('.home-run-number').last()).toContainText('不在样本内');
+  expect(await row.locator('.home-run-identity>strong').getAttribute('title')).toBe(run.task_goal);
+  value.summary.feedback.events=1;run.capture_status='connected';
+  await page.getByRole('button',{name:'刷新',exact:true}).click();
+  await expect(feedback.locator('.home-capture-state')).toHaveText('正在接收');
+  run.execution_status='completed';run.outcome_status='failed';run.capture_integrity='complete';value.summary.feedback.outcomes=1;
+  await page.getByRole('button',{name:'刷新',exact:true}).click();
+  await expect(feedback.locator('.home-capture-state')).toHaveText('执行结束');
+  await expect(feedback).toContainText('验收未通过');
+  value.summary.feedback.events=0;
+  await page.getByRole('button',{name:'刷新',exact:true}).click();
+  await expect(feedback.locator('.home-capture-state')).toHaveText('未收到事件');
+  run.execution_status='unknown';
+  await page.getByRole('button',{name:'刷新',exact:true}).click();
+  await expect(feedback.locator('.home-capture-state')).toHaveText('状态未确认');
+  run.capture_integrity='partial';
+  await page.getByRole('button',{name:'刷新',exact:true}).click();
+  await expect(feedback.locator('.home-capture-state')).toHaveText('采集异常');
+  await expect(feedback).toContainText('事件交付：不完整');
+  await feedback.getByRole('button',{name:'查看接入步骤'}).click();
+  await expect(page.getByRole('dialog',{name:'开始监控',exact:true})).toBeVisible();
+  await page.keyboard.press('Escape');
+  for(const width of [1366,390]){await page.setViewportSize({width,height:768});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();}
 });
 
 test('开始监控按需打开、说明真实能力，复制不执行；刷新失败保留旧数据',async({page,request})=>{

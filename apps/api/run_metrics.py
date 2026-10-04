@@ -57,6 +57,13 @@ def timestamp(event):
         return None
 
 
+def observed_time(events):
+    """Range of reliable source timestamps; not admission or process wall time."""
+    times = [value for event in events if (value := timestamp(event)) is not None]
+    return {'recorded_ms': max(times) - min(times) if len(times) > 1 else None,
+            'timed_events': len(times)}
+
+
 def phase(event):
     explicit = object_value(event.get('capture')).get('phase')
     if explicit in ('start', 'end', 'end_only'):
@@ -140,10 +147,8 @@ def run_metrics(run, events):
             if starts[0].get('parent_source_id') and ends[0].get('parent_source_id') and starts[0]['parent_source_id'] != ends[0]['parent_source_id']:
                 continue
             returned.append(ends[0])
-    times = [value for event in events if (value := timestamp(event)) is not None]
-    elapsed = max(times) - min(times) if len(times) > 1 else None
     return {'run_id': run['run_id'], 'event_count': len(events), 'in_progress': run['execution_status'] == 'running',
-            'time': {'recorded_ms': elapsed, 'timed_events': len(times)},
+            'time': observed_time(events),
             'llm': {'observed': len(calls), 'completed': len(responded),
                     'pending': len(calls) - len(responded), 'failed': sum(call['state'] == 'failed' for call in calls),
                     'response_only': sum(call['response_only'] for call in calls),

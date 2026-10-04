@@ -1,5 +1,13 @@
 # 进度
 
+## 2026-10-04：Git 基线与 Run 视图控制第二批
+
+已提交 800d723：feat(run): unify investigation workspace and trace controls；18个提交文件审查和暂存区密钥扫描通过，无权重/凭据/数据库/截图，没有推送远程。
+
+第二批完成：工具栏“视图”Popover、舒适/紧凑(52/36px行高)、会话密度偏好、专注模式/显式退出/普通路由恢复导航，证据定位目标短暂提示。新增run-view组件/CSS和4项交互验收；Shell只提供视图状态并条件隐藏Run导航，未改其他页面和后端语义。Esc关闭设置保留RCA/选择/时间窗；原生Popover避开工作区裁剪；存储禁用和390px窄屏验证通过。
+
+最终构建/diff通过，31项浏览器测试全部通过（含CLI/SSE重连和原件/RCA人工确认回归）。1366/1440真实Run截图已人工查看，舒适/紧凑/专注无额外页面溢出，截图在.local忽略。第二批保留为未提交更改等待视觉反馈；8000预览保留，8001隔离DB服务结束后关闭，无真实模型调用。
+
 ## 2026-10-04：Run 控件第一批交付
 
 完成分段切换、时间轴工具组、可移除筛选条件/计数和只读代码工具栏。新增 apps/web/src/run-controls.tsx/.css 与 4 项控件交互测试；RunWorkspace 接入，TimelineNavigation 仅增加操作分组分隔。支持换行/行号/精确复制/复制失败重试/展开阅读及焦点恢复，完整原始证据仍可读取。
@@ -294,3 +302,14 @@ R1资源：新增network-none容器agentops-tether-replay-20261002（54aa12a7...
 R1/R2完成：原MCPClient握手与79工具发现成功，5所选工具均存在，预检0模型请求。新Agent PID62016，真实Run7af4add942c044849cef8bc07ad8e6d2已running/模型调用1；SSE observer与浏览器旁路监听启动，并提供实时链接。使用新AgentTether来源hash，不追加旧记录。
 
 R3/R4完成：真实反馈两轮，第一7af4add...10/14失败、第二25306a...14/14通过；5+7=12模型请求，7+10组工具配对、138+170事件，均complete/0丢失。308事件证据API解析通过，哈希与来源核对、密钥未入原件。SSE两轮running增长、4张浏览器阶段截图无pageerror。第一轮现场另有offline_hgt succeeded，未在旁路记录归因；首次证明断言零诊断作业因此失败，已按事实区分，无analyst_rca作业。专属容器/代理/SSH与临时模型配置清理，平台服务和记录保留。命令检索早期PowerShell通配路径rg失败已改为明确路径；服务器image过滤过宽已定位准确image。交付docs/agenttether-real-agent-replay.md；本轮未改产品或推送。
+
+
+## 2026-10-04：首页精修第三批完成
+
+- 新增 home-run-list.tsx/css，替代旧 HomeRun 堆叠行；共享列对齐、独立事实状态、缩略标题保留全文、来源/轮次/入库时间、真实源事件时长和 Agent Token 覆盖。
+- CaptureFeedback 改为清晰阶段状态与四项接入检查；任务检查失败不被当成采集失败，结束无事件和执行未知不假装等待或结束；人工接入入口/刷新/用量范围保持。
+- API 仅新增最近20样本的只读时间投影（所有种类源事件），共用 observed_time，不改变持久化事实或造成每行前端请求。
+- tsc/Vite 构建与 diff 检查通过，14项相关后端回归通过，39项相关浏览器回归通过、1项需指定真实历史记录的检查跳过；最终小调整后另复验首页4项。1366/1440/390截图无横向溢出，页面错误0。
+- 全量浏览器尝试包含旧版实际HGT测试，停在旧UI按钮定位阶段；核对隔离DB diagnosis_jobs=0后停止该次测试，改为明确选择不运行真实HGT/模型的相关回归。未发生真实推理。测试仅使用隔离DB与确定性CLI例子。
+- 8000原服务确认无活跃Run后重启以加载只读API新增字段；现PID81672、session85278，保留供预览。8001隔离测试服务在验收后停止。第二批和本批均未提交或推送；Task History留待首页确认。
+- 截图：.local/home-refine-before-{1366,1440}.png / .local/home-refine-after-{1366,1440,390}.png。DESIGN_VARIANCE=2 / MOTION_INTENSITY=1 / VISUAL_DENSITY=7，无新依赖。

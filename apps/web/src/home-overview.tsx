@@ -31,19 +31,24 @@ export function HomeOverview({summary,onSection}:{summary:HomeSummary|null;onSec
   </>;
 }
 
-export function CaptureFeedback({summary,renderSource}:{summary:HomeSummary;renderSource:(run:Run)=>ReactNode}) {
+export function CaptureFeedback({summary,renderSource,onStart}:{summary:HomeSummary;renderSource:(run:Run)=>ReactNode;onStart:()=>void}) {
   const feedback=summary.feedback;
-  if(!feedback)return <section className="home-capture empty" aria-label="接入反馈"><Terminal size={17}/><div><strong>{summary.source==='imported'?'历史记录已导入，实时接入单独查看':summary.source==='live'?'等待真实 Agent 接入':'尚无所选来源的实时记录'}</strong><span>{summary.source==='imported'?'切换至“真实实时”，查看实时 Agent 的接入情况。':'点击“开始监控”，在终端运行接入命令。API 在线并不表示已有 Agent 上报。'}</span></div></section>;
+  if(!feedback)return <section className="home-capture empty" aria-label="接入反馈"><Terminal size={17}/><div><strong>{summary.source==='imported'?'历史记录不包含实时接入反馈':summary.source==='live'?'等待真实 Agent 接入':'尚无所选来源的实时记录'}</strong><span>{summary.source==='imported'?'切换至“真实实时”，查看实时 Agent 的接入情况。':'点击“开始监控”，在终端运行接入命令。API 在线并不表示已有 Agent 上报。'}</span></div><button className="home-capture-guide" onClick={onStart}>查看接入步骤<ChevronRight size={14}/></button></section>;
   const run=feedback.run;
+  const captureBad=run.capture_integrity==='partial'||!!run.dropped_events||(run.execution_status==='running'&&run.capture_status==='disconnected');
+  const ended=['completed','failed','cancelled'].includes(run.execution_status);
+  const captureState=captureBad?'warning':run.execution_status==='running'?(feedback.events?'receiving':'waiting'):ended?'ended':'unknown';
+  const captureLabel=captureBad?'采集异常':run.execution_status==='running'?(feedback.events?'正在接收':'等待上报'):ended?(feedback.events?'执行结束':'未收到事件'):'状态未确认';
   const checkpoints=[
     {key:'events',label:'执行事件',ready:feedback.events>0,text:feedback.events?`${feedback.events} 条已收到`:'等待首条事件'},
     {key:'tools',label:'工具调用',ready:feedback.tools.observed>0,text:feedback.tools.observed?`${feedback.tools.observed} 次 · ${feedback.tools.paired} 组返回`:'尚未记录工具调用'},
     {key:'usage',label:'模型用量',ready:feedback.with_total>0,text:feedback.model_responses?`${feedback.with_total}/${feedback.model_responses} 响应有总用量`:'尚未记录模型响应'},
     {key:'checks',label:'任务检查',ready:feedback.outcomes>0,text:feedback.outcomes?outcomeNames[run.outcome_status]||'验收未知':'未收到检查记录'},
   ];
-  return <section className="home-capture" aria-label="接入反馈"><div className="home-capture-heading"><span>接入反馈 <small>最新实时记录</small></span><Link to={'/runs/'+run.run_id}><strong>{run.task_goal||run.external_run_id}</strong><ArrowUpRight size={13}/></Link>{renderSource(run)}<small className="capture-run-state">{run.execution_status==='running'?run.capture_status==='disconnected'?'采集器失联 · 执行待确认':'运行中':executionNames[run.execution_status]||'执行状态未知'}</small></div>
-    <div className="home-capture-checks">{checkpoints.map(point=>{const failed=point.key==='checks'&&point.ready&&run.outcome_status==='failed';return <Link key={point.key} to={'/runs/'+run.run_id} className={failed?'received check-failed':point.ready?'received':'waiting'}>{failed?<AlertCircle size={15}/>:point.ready?<Check size={15}/>:<span className="capture-wait-dot"/>}<div><span>{point.label}</span><strong className={failed?'failed-check':''}>{point.text}</strong></div></Link>;})}</div>
-    <small className="home-capture-note"><span className={run.capture_integrity==='partial'?'capture-incomplete':''}>事件交付：{({complete:'完整',partial:'不完整',pending:'待补齐',unknown:'未知'} as Record<string,string>)[run.capture_integrity||'unknown']||'未知'}</span> · 此处核对已上报的数据；采集完整不代表所有工具和模型操作均已接入。</small>
+  return <section className="home-capture" aria-label="接入反馈">
+    <div className="home-capture-heading"><div className="home-capture-title"><strong>接入反馈</strong><span className={'home-capture-state '+captureState}><i/>{captureLabel}</span><small>最新实时记录</small></div><Link className="home-capture-run" to={'/runs/'+run.run_id}><strong title={run.task_goal||run.external_run_id}>{run.task_goal||run.external_run_id}</strong><ArrowUpRight size={14}/></Link>{renderSource(run)}<small className="capture-run-state">{run.execution_status==='running'?run.capture_status==='disconnected'?'采集器失联 · 执行待确认':'运行中':executionNames[run.execution_status]||'执行状态未知'}</small></div>
+    <div className="home-capture-checks">{checkpoints.map(point=>{const failed=point.key==='checks'&&point.ready&&run.outcome_status==='failed';return <Link key={point.key} to={'/runs/'+run.run_id} className={failed?'received check-failed':point.ready?'received':'waiting'}>{failed?<AlertCircle size={16}/>:point.ready?<Check size={16}/>:<span className="capture-wait-dot"/>}<div><span>{point.label}</span><strong className={failed?'failed-check':''}>{point.text}</strong></div><ChevronRight className="capture-check-open" size={12}/></Link>;})}</div>
+    <div className="home-capture-foot"><small className="home-capture-note"><span className={run.capture_integrity==='partial'?'capture-incomplete':''}>事件交付：{({complete:'完整',partial:'不完整',pending:'待补齐',unknown:'未知'} as Record<string,string>)[run.capture_integrity||'unknown']||'未知'}</span> · 此处核对已上报的数据；采集完整不代表所有工具和模型操作均已接入。</small>{(!feedback.events||captureBad)&&<button className="home-capture-guide" onClick={onStart}>查看接入步骤<ChevronRight size={14}/></button>}</div>
   </section>;
 }
 

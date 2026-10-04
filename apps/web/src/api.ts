@@ -20,7 +20,7 @@ export interface DiagnosisSnapshot {
 }
 export interface RunInsight {diagnosis:DiagnosisSnapshot;failure_signals:FailureSignal[];attention_reasons:string[]}
 export type HomeSource='live'|'imported'|'synthetic'|'all';
-export interface HomeSample {run_id:string;goal:string;created_at:string;origin:string;sample_kind:string;outcome_status:string;tokens:number|null;responses:number;with_total:number}
+export interface HomeSample {run_id:string;goal:string;created_at:string;origin:string;sample_kind:string;outcome_status:string;tokens:number|null;responses:number;with_total:number;time?:{recorded_ms:number|null;timed_events:number}}
 export interface HomeSummary {
   source:HomeSource;running:number;attention:number;total_runs:number;all_runs:number;
   sample:{limit:number;count:number;items:HomeSample[]};

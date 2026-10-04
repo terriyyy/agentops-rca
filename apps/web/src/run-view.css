@@ -1,0 +1,27 @@
+/* Run-only view preferences. No navigation or typography changes on other routes. */
+.run-shell.run-focus>.sidebar{display:none}
+.run-shell.run-focus>.workspace-main{margin-left:0;width:100%}
+.run-console .run-view-controls{display:inline-flex;align-items:center;gap:6px;flex:none}
+.run-console .view-settings-trigger[aria-expanded=true]{background:#edf4ff;color:#275b9a;border-color:#bdd2ed}
+.run-console .focus-exit{color:#275b9a;background:#f2f7fd;border-color:#c8d9ee}
+.run-view-popover{position:fixed;inset:auto;margin:0;top:var(--view-popover-top,290px);left:var(--view-popover-left,100px);width:258px;padding:0;border:1px solid #d9e2ed;border-radius:8px;background:#fff;color:#24364c;box-shadow:0 8px 30px #273d5824;max-width:calc(100vw - 24px);font-size:13px}
+.view-popover-heading{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid #e8edf3;color:#526b87}.view-popover-heading strong{font-size:13px;font-weight:600;color:#24364c}
+.view-density{padding:14px 16px 11px}.view-density>label{display:block;font-size:12px;font-weight:550;color:#43546b;margin-bottom:9px}
+.run-console .run-view-popover .control-segment{display:flex;width:100%;box-sizing:border-box}.run-console .run-view-popover .control-segment button{flex:1;height:29px;font-size:13px}
+.view-density p{margin:9px 0 0;color:#64748b;font-size:12px;line-height:1.7}
+.view-focus-option{display:flex;align-items:center;gap:10px;width:calc(100% - 16px);margin:0 8px;padding:11px 8px;border:0;border-top:1px solid #edf0f4;border-radius:4px;background:#fff;color:#43546b;text-align:left;cursor:pointer}
+.view-focus-option:hover{background:#f2f7fd}.view-focus-option:focus-visible{outline:2px solid #2563eb;outline-offset:0}.view-focus-option>span{flex:1}.view-focus-option strong{display:block;font-size:13px;font-weight:550}.view-focus-option small{display:block;font-size:12px;line-height:1.7;color:#64748b;margin-top:2px}.view-focus-option[aria-pressed=true]{color:#275b9a}
+.view-preference-note{display:block;padding:9px 16px 12px;font-size:11px;color:#64748b}
+.run-console .console-event.trace-row{transition:background-color 120ms,color 120ms}
+.run-console.density-comfortable .console-event.trace-row{height:52px;min-height:52px}
+.run-console.density-comfortable .event-inspector .event-facts,.run-console.density-comfortable .selected-overview{font-size:14px;line-height:1.65}
+.run-console.density-comfortable .code-viewer pre.code-content{font-size:14px;line-height:1.75}
+.run-console.density-compact .console-event.trace-row{height:36px;min-height:36px}
+.run-console.density-compact .console-event-name strong{font-size:14px}
+.run-console.density-compact .inspector-scroll{padding-top:10px;padding-bottom:10px}
+.run-console.density-compact .event-value{margin-bottom:8px}
+.run-console.density-compact .event-value summary{padding:4px 0;font-size:13px}
+.run-console.density-compact .code-viewer pre.code-content{font-size:13px;line-height:1.65;padding-top:7px;padding-bottom:7px}
+.run-console .console-event.located{animation:trace-locate 1600ms ease-out}
+@keyframes trace-locate{0%,35%{outline:2px solid #568bc8;outline-offset:-2px;box-shadow:inset 0 0 0 2px #c5dafa}100%{outline-color:transparent;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){.run-console .console-event.located{animation:none;outline:2px solid #568bc8;outline-offset:-2px}}

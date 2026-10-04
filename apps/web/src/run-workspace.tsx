@@ -11,6 +11,7 @@ import {ModelUsageDetail,RunUsageSummary,useRunMetrics} from './run-usage';
 import {isExecutionStep,readTracePreferences,saveTracePreferences,splitStyle,TraceDivider} from './run-interactions';
 import './run-investigation.css';
 import {CodeViewer,SegmentedControl} from './run-controls';
+import {RunViewControls,useRunView} from './run-view';
 
 // Event records are append-only. Read in bounded API batches; refresh only the suffix.
 function useTrace(run:Run) {
@@ -92,6 +93,7 @@ interface Props {
   renderReport:(report:Diagnosis,openEvidence:(id:string)=>void)=>ReactNode;
 }
 export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,renderDiagnosis,renderValidation,renderTechnical,renderReport}:Props) {
+  const view=useRunView();
   const trace=useTrace(run);const events=trace.events;
   const metrics=useRunMetrics(run);
   const analysis=useRunAnalysis(run),references=analysis.reports;
@@ -101,6 +103,8 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
   const [selected,setSelected]=useState<string|null>(null),[query,setQuery]=useState(preferences.query),[kind,setKind]=useState(preferences.kind),[onlyErrors,setOnlyErrors]=useState(preferences.onlyErrors);
   const [seenCount,setSeenCount]=useState(run.event_count);
   const [copied,setCopied]=useState(false);
+  const [located,setLocated]=useState<string|null>(null);
+  useEffect(()=>{if(!located)return;const timer=window.setTimeout(()=>setLocated(null),1800);return()=>window.clearTimeout(timer);},[located]);
   const requestedEvent=useRef(new URLSearchParams(window.location.search).get('event')),pendingFocus=useRef<string|null>(null);
   const [page,setPage]=useState(0),[follow,setFollow]=useState(run.origin==='live'&&run.execution_status==='running'&&!requestedEvent.current);
   const [timeScope,setTimeScope]=useState<'page'|'run'>(preferences.timeScope);
@@ -158,15 +162,16 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
     if(target){locateEvent(target,true);setRawId(pendingEvidence.id);setDetailTab('raw');setEvidenceMessage('已定位报告引用的执行事件');setPendingEvidence(null);}
     else if(!trace.loading){setPendingEvidence(null);setEvidenceMessage('该引用没有本轮可定位的执行事件，保留原始证据。');}
   },[events,trace.loading,pendingEvidence]);
-  function selectRow(row:TraceRow,focus=false,retainPane=false){if(!retainPane){setSide('event');setEvidencePeek(false);}if(focus)pendingFocus.current=row.id;initialized.current=true;if(!retainPane)requestVersion.current++;setPendingEvidence(null);setSelected(row.id);setFollow(false);setDetailTab('details');setRawId(null);setEvidenceMessage('');}
+  function selectRow(row:TraceRow,focus=false,retainPane=false){if(!retainPane){setSide('event');setEvidencePeek(false);setLocated(null);}if(focus)pendingFocus.current=row.id;initialized.current=true;if(!retainPane)requestVersion.current++;setPendingEvidence(null);setSelected(row.id);setFollow(false);setDetailTab('details');setRawId(null);setEvidenceMessage('');}
   function locateEvent(event:TraceEvent,retainPane=false){const target=model.rows.find(row=>row.id===model.rowForEvent.get(event.event_id));if(!target)return;
     setPreset('all');setQuery('');setKind('');setOnlyErrors(false);setCollapsed(new Set());selectRow(target,false,retainPane);
+    setLocated(target.id);
     const fullRows=tree&&model.hasTree?(()=>{const list:TraceRow[]=[];function visit(id:string){for(const row of model.rows.filter(item=>(model.rowParent.get(item.id)||'')===id)){list.push(row);visit(row.id);}}visit('');return list;})():model.rows;
     setPage(Math.max(0,Math.floor(fullRows.findIndex(row=>row.id===target.id)/pageSize)));}
   function changePreset(value:'steps'|'all'){if(value==='all'&&selectedEvent){locateEvent(selectedEvent);return;}setPreset(value);setQuery('');setKind('');setOnlyErrors(false);setPage(0);setFollow(false);}
   async function copyEventLink(){if(!selectedEvent)return;const url=new URL(window.location.href);url.search='';url.searchParams.set('event',selectedEvent.event_id);url.hash='';try{await navigator.clipboard.writeText(url.toString());setCopied(true);}catch{setEvidenceMessage('无法访问剪贴板，请检查浏览器权限。');}}
   async function openEvidence(id:string){
-    evidenceTrigger.current=document.activeElement as HTMLElement|null;initialized.current=true;const version=++requestVersion.current;setPendingEvidence(null);setFollow(false);setLocating(true);setRawId(null);setEvidenceMessage('');setEvidencePeek(side!=='event');
+    evidenceTrigger.current=document.activeElement as HTMLElement|null;initialized.current=true;const version=++requestVersion.current;setPendingEvidence(null);setLocated(null);setFollow(false);setLocating(true);setRawId(null);setEvidenceMessage('');setEvidencePeek(side!=='event');
     try {const evidence=await api<Evidence>('/evidence/'+id);if(version!==requestVersion.current)return;
       const target=evidence.resolution_status==='resolved'?events.find(e=>e.event_id===evidence.event_id):null;
       if(target){locateEvent(target,true);setEvidenceMessage('已定位报告引用的执行事件');}
@@ -194,7 +199,7 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
   const diagnosisState=projectedState!=='none'?projectedState:analysis.reports.length?(analysis.reports.some(report=>report.mode==='analyst_rca')?'hypothesis':analysis.reports.some(report=>report.origin==='recomputed')?'localization':'historical'):'none';
   const diagnosisTone=({running:'running',failed:'failed',hypothesis:'hypothesis',localization:'localization',historical:'unknown',none:'unknown'} as Record<string,string>)[diagnosisState]||'unknown';
   const captureTone=run.origin!=='live'?'unknown':({complete:'complete',partial:'partial',pending:'running',unknown:'unknown'} as Record<string,string>)[run.capture_integrity||'unknown']||'unknown';
-  return <div className="run-console">
+  return <div className={'run-console density-'+view.density}>
     <header className="console-header"><div className="console-identity"><Link to="/" className="console-back" aria-label="返回运行工作台"><ArrowLeft size={17}/></Link><div><div className="console-kicker"><span>RUN</span><span>第 {run.attempt_index} 次运行</span>{sourceLabels}</div><h1 title={run.task_goal||'Agent 运行'}>{run.task_goal||'Agent 运行'}</h1></div></div><div className="console-links"><button className="run-analysis-trigger" aria-controls="analysis-panel" aria-expanded={side==='diagnosis'} title="打开本次运行的原因分析；调用模型仍需预览并人工确认" onClick={()=>openInvestigation('diagnosis')}><Sparkles size={15}/>{analysis.actionLabel.replace('（RCA）','')}<span>RCA</span></button><button className="header-check" onClick={()=>openInvestigation('validation')}>检查结果</button><Link to={'/tasks/'+run.task_id}>任务历程<ArrowUpRight size={13}/></Link><button onClick={()=>openResource('technical')}>运行资料<FileJson size={13}/></button></div></header>
     <div className="console-states run-status"><div><span>Execution</span><strong className={'status-value tone-'+executionTone}>{executionNames[run.execution_status]||'执行未知'}</strong><small>退出码 {run.exit_code??'—'}</small></div><button onClick={()=>openInvestigation('validation')}><span>Task Outcome</span><strong className={'status-value tone-'+run.outcome_status}>{outcomeNames[run.outcome_status]||'验收未知'}</strong></button><button onClick={()=>openInvestigation('diagnosis')}><span>Diagnosis</span><strong className={'status-value tone-'+diagnosisTone}>{diagnosisState!==projectedState?diagnosisNames[diagnosisState]:diagnosisLabel}</strong></button><div><span>Capture</span><strong className={'status-value tone-'+captureTone}>{capture}</strong></div></div>
     {run.origin==='live'&&<div className="console-live live-monitor" role="status"><span className={'connection-dot '+(connection==='connected'?'':'offline')}/><span>{connection==='connected'?'网页实时连接':connection==='reconnecting'?'网页断线 · 正在重连':'正在建立实时连接'}</span><span>采集器：{({connected:'在线',disconnected:'失联 · 状态未确认',finished:'已结束'} as Record<string,string>)[run.capture_status||'']||'连接中'}</span><span>丢失告警 {run.dropped_events||0}</span></div>}
@@ -213,6 +218,7 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
       </span>
       <span className="toolbar-count">{model.rows.length.toLocaleString()} 步 · {events.length.toLocaleString()} 原始事件</span>
       {run.origin==='live'&&<button className="trace-control trace-follow" aria-pressed={follow} title={follow?'正在跟随最新事件':'已暂停跟随 · 可查看旧记录'} onClick={()=>{setFollow(v=>!v);if(!follow){setQuery('');setKind('');setOnlyErrors(false);setCollapsed(new Set());}}}>{follow?<Pause size={13}/>:<Play size={13}/>}<span className="follow-label">{follow?'暂停跟随':newEvents?`跟随最新 · ${newEvents} 条新事件`:'跟随最新'}</span></button>}
+      <RunViewControls/>
     </div>
     {!!(query||kind||onlyErrors)&&<div className="trace-filter-strip" role="group" aria-label="当前筛选条件">
       <span className="trace-filter-count" role="status">匹配 <strong>{filtered.length.toLocaleString()}</strong> / {model.rows.length.toLocaleString()} 步</span>
@@ -241,7 +247,7 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
             const failure=row.events.find(isFailure),summary=objectValue(failure?.output);const inlineError=failure?.error_signature||pretty(summary.stderr??failure?.output);
             const referenced=referencedRows.has(row.id),duration=rowDuration(row);
             return <div className={'execution-item'+(failure?' failed':'')+(referenced?' referenced':'')} key={row.id}>
-              <div role="button" tabIndex={0} aria-label={`${row.kind==='tool_span'?'选择工具执行':'选择事件'} ${event.position+1} ${row.name}`} aria-pressed={selected===row.id} data-event-id={row.id} className={'trace-row console-event'+(selected===row.id?' selected':'')+(!model.hasTimeline?' without-time':'')} onClick={()=>selectRow(row)} onDoubleClick={()=>timeView.focus(row)} onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();selectRow(row);}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const index=ordered.findIndex(item=>item.row.id===row.id)+(e.key==='ArrowDown'?1:-1);const next=ordered[index]?.row;if(next){selectRow(next,true);setPage(Math.floor(index/pageSize));}}}}>
+              <div role="button" tabIndex={0} aria-label={`${row.kind==='tool_span'?'选择工具执行':'选择事件'} ${event.position+1} ${row.name}`} aria-pressed={selected===row.id} data-event-id={row.id} className={'trace-row console-event'+(selected===row.id?' selected':'')+(located===row.id?' located':'')+(!model.hasTimeline?' without-time':'')} onClick={()=>selectRow(row)} onDoubleClick={()=>timeView.focus(row)} onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();selectRow(row);}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const index=ordered.findIndex(item=>item.row.id===row.id)+(e.key==='ArrowDown'?1:-1);const next=ordered[index]?.row;if(next){selectRow(next,true);setPage(Math.floor(index/pageSize));}}}}>
                 <div className="console-event-name"><span className="trace-position">{String(event.position+1).padStart(3,'0')}</span><TraceBranch depth={depth} guides={guides} last={last}/>{hasChildren&&<button className="row-expand" aria-label={collapsed.has(row.id)?'展开子事件':'收起子事件'} onClick={e=>{e.stopPropagation();setCollapsed(values=>{const next=new Set(values);next.has(row.id)?next.delete(row.id):next.add(row.id);return next;});}}>{collapsed.has(row.id)?<ChevronRight size={12}/>:<ChevronDown size={12}/>}</button>}<TraceType row={row}/><div className="trace-name"><strong title={row.name}>{row.name}</strong><small className="trace-kind-description">{row.kind==='tool_span'?'Tool Execution':kindLabel(event.kind)}</small></div>{referenced&&<Link2 className="trace-reference" size={12} aria-label="被诊断报告引用"/>}<span className="trace-row-status"><RowStatus row={row}/></span></div>
                 {model.hasTimeline&&<TimelineMark row={row} view={timeView} origin={model.start} failed={!!failure}/>}
                 <span className={'event-duration'+(duration!==null?' measured':'')+(interval?' ranged':'')} title={interval?'调用与返回的来源时间区间':duration!==null?'来源提供耗时；未据此推断起止时间':'来源未提供耗时'}>{durationLabel(duration)}</span>

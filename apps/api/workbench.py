@@ -6,7 +6,7 @@ execution, outcome, diagnosis, or capture records.
 
 from .live import live_view
 from .storage import payload
-from .run_metrics import MAX_COUNT, run_metrics
+from .run_metrics import MAX_COUNT, observed_time, run_metrics
 
 
 FAILED_JOB_STATES = {'failed', 'timed_out', 'interrupted'}
@@ -164,6 +164,15 @@ def overview(db, limit=20, source='all', include_summary=False):
         return result
 
     sample, values, responses, with_total, uncertain = [], [], 0, 0, 0
+    # Read only timestamps across all event kinds, once for the bounded sample.
+    # The usage query below contains only LLM events and cannot measure Run time.
+    timestamps = {row['id']: [] for row in recent_rows}
+    if timestamps:
+        marks = ','.join('?' for _ in timestamps)
+        for item in db.execute(
+                f"SELECT run_id,json_extract(payload,'$.occurred_at') AS occurred_at FROM events WHERE run_id IN ({marks})",
+                tuple(timestamps)):
+            timestamps[item['run_id']].append({'occurred_at': item['occurred_at']})
     for row in recent_rows:
         # Only model metadata is needed for this bounded usage sample.
         run = project([row])[0]
@@ -179,7 +188,8 @@ def overview(db, limit=20, source='all', include_summary=False):
         sample.append({'run_id':run['run_id'], 'goal':run['task_goal'], 'created_at':run['created_at'],
                        'origin':run['origin'], 'sample_kind':run['sample_kind'],
                        'outcome_status':run['outcome_status'], 'tokens':token['value'],
-                       'responses':metric['tokens']['responses'], 'with_total':token['responses']})
+                       'responses':metric['tokens']['responses'], 'with_total':token['responses'],
+                       'time':observed_time(timestamps[run['run_id']])})
     total = sum(values) if values else None
     if total is not None and total > MAX_COUNT:
         total = None
