@@ -18,6 +18,7 @@ from .storage import Store, payload
 from .live import router as live_router, live_view
 from .diagnosis import DiagnosisManager, router as diagnosis_router
 from .workbench import overview as workbench_overview, projected_run
+from .run_metrics import run_metrics
 
 ROOT=Path(__file__).resolve().parents[2]
 MAX_BODY=32*1024*1024
@@ -172,6 +173,13 @@ def create_app(db_path=None, diagnosis_config=None):
             count=db.execute('SELECT count(*) FROM events WHERE '+where,args).fetchone()[0]
             rows=db.execute('SELECT * FROM events WHERE '+where+' ORDER BY position LIMIT ? OFFSET ?',args+[limit,offset])
             return {'items':[payload(r) for r in rows],'total':count,'offset':offset,'limit':limit}
+
+    @app.get('/api/runs/{id}/metrics')
+    def metrics(id:str):
+        with store.connect() as db:
+            run=payload(get_row(db,'runs',id))
+            events=[payload(row) for row in db.execute('SELECT * FROM events WHERE run_id=? ORDER BY position',(id,))]
+            return run_metrics(run,events)
 
     @app.get('/api/runs/{id}/diagnoses')
     def diagnoses(id:str):

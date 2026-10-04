@@ -7,6 +7,7 @@ import './run-workspace.css';
 import {TimelineGrid,TimelineMark,TimelineNavigation,TimelineRuler,TraceBranch,TraceType,useTimelineView} from './trace-timeline';
 import {useRunAnalysis,type RunAnalysis} from './run-analysis';
 import {reportKind} from './run-panels';
+import {ModelUsageDetail,RunUsageSummary,useRunMetrics} from './run-usage';
 
 // Event records are append-only. Read in bounded API batches; refresh only the suffix.
 function useTrace(run:Run) {
@@ -89,6 +90,7 @@ interface Props {
 }
 export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,renderDiagnosis,renderValidation,renderTechnical,renderReport}:Props) {
   const trace=useTrace(run);const events=trace.events;
+  const metrics=useRunMetrics(run);
   const analysis=useRunAnalysis(run),references=analysis.reports;
   const model=useMemo(()=>traceModel(events),[events]);
   const [selected,setSelected]=useState<string|null>(null),[query,setQuery]=useState(''),[kind,setKind]=useState(''),[onlyErrors,setOnlyErrors]=useState(false);
@@ -97,10 +99,10 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
   const [tree,setTree]=useState(true),[collapsed,setCollapsed]=useState<Set<string>>(new Set()),[expanded,setExpanded]=useState<Set<string>>(new Set());
   const hasRecordedFailure=(run.insight?.failure_signals||[]).some(s=>s.kind==='event');
   const [dock,setDock]=useState<DockMode>(run.outcome_status==='failed'&&!hasRecordedFailure?'validation':'diagnosis');
-  const [dockOpen,setDockOpen]=useState(run.execution_status!=='running'),[dockHeight,setDockHeight]=useState(run.outcome_status==='failed'&&!hasRecordedFailure?180:260);
+  const [dockOpen,setDockOpen]=useState(run.execution_status!=='running'),[dockHeight,setDockHeight]=useState(run.outcome_status==='failed'&&!hasRecordedFailure?180:Math.min(260,Math.max(180,window.innerHeight-560)));
   const [resources,setResources]=useState<ResourceMode|null>(null);
   const manualHeight=useRef(false),dockTouched=useRef(false);
-  useEffect(()=>{function fitDock(){setDockHeight(height=>Math.max(140,Math.min(height,window.innerHeight*.48)));}window.addEventListener('resize',fitDock);return()=>window.removeEventListener('resize',fitDock);},[]);
+  useEffect(()=>{function fitDock(){setDockHeight(height=>Math.max(140,Math.min(height,window.innerHeight*.48,manualHeight.current?Infinity:Math.max(180,window.innerHeight-560))));}window.addEventListener('resize',fitDock);return()=>window.removeEventListener('resize',fitDock);},[]);
   const [rawId,setRawId]=useState<string|null>(null),[detailTab,setDetailTab]=useState<'details'|'raw'>('details'),[evidenceMessage,setEvidenceMessage]=useState('');
   const [locating,setLocating]=useState(false);
   const [pendingEvidence,setPendingEvidence]=useState<{id:string;eventId:string}|null>(null);
@@ -168,7 +170,8 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
   const selectedDuration=selectedRow?rowDuration(selectedRow):null;
   const selectedInput=selectedRow?.kind==='tool_span'?selectedRow.call.input:selectedEvent?.input;
   const selectedOutput=selectedRow?.kind==='tool_span'?selectedRow.returned.output:selectedEvent?.output;
-  const input=objectValue(selectedInput),output=objectValue(selectedOutput),usage=objectValue(output.usage);
+  const input=objectValue(selectedInput),output=objectValue(selectedOutput);
+  const selectedModelCall=selectedEvent?.kind==='llm'?metrics.data?.llm.calls.find(call=>call.start_event_id===selectedEvent.event_id||call.end_event_id===selectedEvent.event_id):undefined;
   const refs=selectedRow?references.filter(report=>report.findings.some(finding=>finding.evidence.some(ref=>ref.resolution_status==='resolved'&&selectedRow.events.some(event=>ref.event_id===event.event_id)))):[];
   const contextPosition=selectedRow?.kind==='tool_span'?(selectedRow.events.find(isFailure)?.position??selectedRow.returned.position):selectedEvent?.position;
   const previous=contextPosition===undefined?[]:events.filter(e=>e.position<contextPosition&&e.event_id!==selectedRow?.id).slice(-3);
@@ -183,6 +186,11 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
     <div className="console-states run-status"><div><span>Execution</span><strong className={'status-value tone-'+executionTone}>{executionNames[run.execution_status]||'执行未知'}</strong><small>退出码 {run.exit_code??'—'}</small></div><button onClick={()=>openDock('validation')}><span>Task Outcome</span><strong className={'status-value tone-'+run.outcome_status}>{outcomeNames[run.outcome_status]||'验收未知'}</strong></button><button onClick={()=>openDock('diagnosis')}><span>Diagnosis</span><strong className={'status-value tone-'+diagnosisTone}>{diagnosisState!==projectedState?diagnosisNames[diagnosisState]:diagnosisLabel}</strong></button><div><span>Capture</span><strong className={'status-value tone-'+captureTone}>{capture}</strong></div></div>
     {run.origin==='live'&&<div className="console-live live-monitor" role="status"><span className={'connection-dot '+(connection==='connected'?'':'offline')}/><span>{connection==='connected'?'网页实时连接':connection==='reconnecting'?'网页断线 · 正在重连':'正在建立实时连接'}</span><span>采集器：{({connected:'在线',disconnected:'失联 · 状态未确认',finished:'已结束'} as Record<string,string>)[run.capture_status||'']||'连接中'}</span><span>丢失告警 {run.dropped_events||0}</span></div>}
     {(error||run.warnings.length>0)&&<details className="console-warnings"><summary><AlertCircle size={13}/>{error?'详情刷新失败，保留已收到记录':`数据提示 ${run.warnings.length}`}</summary>{error&&<p>{error}</p>}<ul>{run.warnings.map(item=><li key={item}>{warningNames[item]||item}</li>)}</ul></details>}
+    <RunUsageSummary metrics={metrics.data} error={metrics.error} loading={metrics.loading} retry={metrics.retry}
+      onTime={()=>{setTimeScope('run');timeView.fit();}}
+      onModels={()=>{setKind('llm');setQuery('');setOnlyErrors(false);setPage(0);setFollow(false);const row=model.rows.find(row=>rowPrimary(row).kind==='llm');if(row)selectRow(row);}}
+      onTools={()=>{setKind('tool');setQuery('');setOnlyErrors(false);setPage(0);setFollow(false);const row=model.rows.find(row=>row.kind==='tool_span'||rowPrimary(row).kind==='tool_call');if(row)selectRow(row);}}
+      onSelect={call=>{const target=events.find(event=>event.event_id===call.event_id);if(target)locateEvent(target);else if(call.evidence_id)void openEvidence(call.evidence_id);}}/>
     <div className="console-trace-toolbar"><span className="toolbar-title">Execution Trace</span><label className="console-search"><Search size={14}/><input aria-label="搜索事件" placeholder="搜索事件、命令或错误…" value={query} onChange={e=>{setQuery(e.target.value);setPage(0);setFollow(false);}}/></label><select aria-label="事件类型" value={kind} onChange={e=>{setKind(e.target.value);setPage(0);setFollow(false);}}><option value="">全部类型</option><option value="tool">Tool Execution</option>{['llm','log','event'].map(type=><option value={type} key={type}>{kindLabel(type)}</option>)}</select><button className={onlyErrors?'active':''} aria-pressed={onlyErrors} onClick={()=>{setOnlyErrors(v=>!v);setPage(0);setFollow(false);}}>仅异常 {failures.length||''}</button>{(failures.length>0||run.outcome_status==='failed')&&<button onClick={jumpFailure}>{failures.length?'定位失败':'查看验收失败'}</button>}<button className="run-analysis-trigger" title="分析本次运行；先定位、预览，人工确认后才调用模型" onClick={()=>openDock('diagnosis')}><Sparkles size={14}/>{analysis.actionLabel}</button><span className="toolbar-count">{model.rows.length.toLocaleString()} 步 · {events.length.toLocaleString()} 原始事件</span>{run.origin==='live'&&<button className={follow?'active':''} onClick={()=>{setFollow(v=>!v);if(!follow){setQuery('');setKind('');setOnlyErrors(false);setCollapsed(new Set());}}}>{follow?'暂停跟随':'跟随最新'}</button>}</div>
     <div className="console-split">
       <section className="execution-pane" aria-label="执行轨迹"><div className="execution-caption"><span>{tree&&model.hasTree&&!filterActive?'来源关系树':'时序事件列表'}{model.hasTree&&<button onClick={()=>{setTree(v=>!v);setPage(0);}}>{tree?'平铺':'关系树'}</button>}</span><span className="execution-caption-tools">{model.hasTimeline&&<span className="time-scope" role="group" aria-label="时间轴范围"><span>时间范围</span><button aria-pressed={timeWindow.scope==='page'} disabled={pageWindow.scope!=='page'} title={pageWindow.scope==='page'?'以当前页来源时间绘制线性时间轴':'当前页缺少可用的时间范围'} onClick={()=>setTimeScope('page')}>本页</button><button aria-pressed={timeWindow.scope==='run'} title="以整轮来源时间绘制线性时间轴" onClick={()=>setTimeScope('run')}>整轮</button></span>}{model.hasTimeline&&<TimelineNavigation view={timeView} selected={selectedRow}/>}<span className="execution-follow-label">{follow?'跟随最新事件':run.origin==='live'?'已暂停跟随 · 可查看旧记录':'保留原始事件顺序'}</span></span></div>
@@ -215,7 +223,8 @@ export function RunWorkspace({run,connection,error,sourceLabels,diagnosisLabel,r
           {detailTab==='raw'&&rawId?<RawEvidence id={rawId}/>:selectedEvent?<>
             <div className="selected-overview">{selectedRow&&<RowStatus row={selectedRow}/>}<span>{selectedRow?.kind==='tool_span'?'Tool Execution':kindLabel(selectedEvent.kind)}</span><span><Clock3 size={12}/>{durationLabel(selectedDuration)}</span></div>
             {selectedRow&&rowFailure(selectedRow)&&<div className="selected-error"><h3><AlertCircle size={14}/>Error · 已记录异常</h3><pre>{selectedRow.events.find(isFailure)?.error_signature||pretty(output.stderr??selectedOutput)}</pre><button className="text-button contextual-analysis" onClick={()=>openDock('diagnosis')}>分析本次运行的失败原因<ArrowUpRight size={12}/></button></div>}
-            {(input.command!==undefined||output.returncode!==undefined||input.model!==undefined||output.model!==undefined||usage.total_tokens!==undefined)&&<dl className="event-facts">{input.command!==undefined&&<><dt>Command</dt><dd>{pretty(input.command)}</dd></>}{output.returncode!==undefined&&<><dt>Return code</dt><dd>{pretty(output.returncode)}</dd></>}{(input.model??output.model)!==undefined&&<><dt>Model</dt><dd>{pretty(input.model??output.model)}</dd></>}{usage.total_tokens!==undefined&&<><dt>Tokens</dt><dd>{pretty(usage.total_tokens)}</dd></>}</dl>}
+            {selectedModelCall&&<ModelUsageDetail call={selectedModelCall}/>}
+            {(input.command!==undefined||output.returncode!==undefined||(!selectedModelCall&&(input.model!==undefined||output.model!==undefined)))&&<dl className="event-facts">{input.command!==undefined&&<><dt>Command</dt><dd>{pretty(input.command)}</dd></>}{output.returncode!==undefined&&<><dt>Return code</dt><dd>{pretty(output.returncode)}</dd></>}{!selectedModelCall&&(input.model??output.model)!==undefined&&<><dt>Model</dt><dd>{pretty(input.model??output.model)}</dd></>}</dl>}
             <ValueSection label={selectedRow?.kind==='tool_span'?'Call / Arguments':'Input'} value={selectedInput}/><ValueSection label={selectedRow?.kind==='tool_span'?'Return / Exit code':'Output'} value={selectedOutput} open={output.stdout===undefined&&output.stderr===undefined}/>
             {selectedInput==null&&selectedOutput==null&&<p className="detail-absent">来源未提供输入或输出。</p>}
             {output.stdout!==undefined&&<ValueSection label="stdout" value={output.stdout} open={!!selectedRow&&rowFailure(selectedRow)}/>}{output.stderr!==undefined&&<ValueSection label="stderr" value={output.stderr} open={!!selectedRow&&rowFailure(selectedRow)}/>}

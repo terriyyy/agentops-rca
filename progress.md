@@ -1,5 +1,16 @@
 # 进度
 
+## 2026-10-04：用量 UI 第一段
+
+已完成旧改动提交：48fff7c feat(collector): bridge AgentTether capture and verify real-agent monitoring；e721ade docs: document product gaps, team roles, and frontend metrics review。工作区在新实施前干净；未推送。开始U1+U2，首段效果完成后保留后续U3/U4待用户反馈。初次规划标题匹配错误已修正。
+
+首段U1+U2完成：新增只读GET /api/runs/{id}/metrics、run_metrics归一化投影；RunUsageSummary/UsageDialog/ModelUsageDetail复用原轨迹选择和证据读取。没有数据库迁移、事件重写或自动模型调用。来源未提供用量显示—，0保持0；模型请求和响应不双计。
+
+验收：新增Python测试6通过；Run工作区及用量Playwright15通过（含SSE累计、跨页证据、取消/预览确认、独立验收/未知、真实树/时间约束）；生产构建通过、diff --check通过。首次新增两条E2E为测试ID与空格假设错误，修正后通过；既有13条工作区用例全部通过。
+
+已重启本地8000读取新API，实际成功Run摘要7模型/10工具/41448Token。1440×1000和1366×768实拍对比、模型用量列表与模型详情截图存.local；无横向溢出。小屏摘要压紧，默认调查面板减少高度以保留轨迹可见空间。隔离8001验收数据未写正式库，测试服务验收后关闭。用户已确认首段效果并授权提交后进入U3；本次提交包含U1/U2代码、测试及实施记录，不包含凭据/权重/运行库/截图，不推送GitHub。U4仍待后续分段展示。
+
+
 ## 2026-10-02：真实EnterpriseOps-Gym接入开始
 
 用户授权在226运行现有evaluate.py案例、单并发/单次运行/最多2次反馈迭代，使用本仓库API；先检查现有代码与配置，不批量运行未知案例。恢复规划和SDK，确认Z盘仍映射到实验目录；密钥仅经受控运行配置提供，不在日志/源码/提交中打印。平台HGT/RCA不属于本次模型自动执行范围。

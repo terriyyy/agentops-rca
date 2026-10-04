@@ -20,6 +20,14 @@ export interface DiagnosisSnapshot {
 }
 export interface RunInsight {diagnosis:DiagnosisSnapshot;failure_signals:FailureSignal[];attention_reasons:string[]}
 export interface WorkbenchOverview {running:Run[];attention:Run[];recent:Run[]}
+export interface ModelUsage {input_tokens:number|null;output_tokens:number|null;total_tokens:number|null;source:string;total_derived:boolean;warnings:string[]}
+export interface ModelCall {event_id:string;evidence_id:string|null;start_event_id:string|null;end_event_id:string|null;position:number;state:string;response_only:boolean;model:string|null;duration_ms:number|null;usage:ModelUsage|null}
+export interface RunMetrics {
+  run_id:string;event_count:number;in_progress:boolean;time:{recorded_ms:number|null;timed_events:number};
+  llm:{observed:number;completed:number;pending:number;failed:number;response_only:number;ambiguous_events:number;unclassified_events:number;calls:ModelCall[]};
+  tokens:{input:{value:number|null;responses:number};output:{value:number|null;responses:number};total:{value:number|null;responses:number};with_usage:number;responses:number;conflicting_responses:number};
+  tools:{observed:number;paired:number;failed:number;unpaired_calls:number};
+}
 export interface Task { id: string; namespace: string; external_id: string; goal: string; sample_kind: string; runs: Run[]; outcome_status?: string }
 export interface TraceEvent {
   source_span_id?: string | null; parent_source_id?: string | null;
