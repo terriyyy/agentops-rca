@@ -1,0 +1,31 @@
+/* Investigation controls and typography stay local to the existing Run workspace. */
+.run-console .console-split{position:relative;--trace-column:clamp(440px,var(--trace-width,60%),calc(100% - var(--detail-min,310px)));grid-template-columns:var(--trace-column) minmax(var(--detail-min,310px),1fr)}
+.trace-divider{position:absolute;z-index:6;top:0;bottom:0;left:calc(var(--trace-column) - 4px);width:8px;cursor:col-resize;touch-action:none}
+.trace-divider::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:2px;background:transparent}
+.trace-divider:hover::after,.trace-divider:focus-visible::after{background:#7494b8}.trace-divider:focus-visible{outline:1px solid #7494b8;outline-offset:-1px}
+.run-console .trace-preset{display:inline-flex;align-items:center;gap:2px;white-space:nowrap}
+.run-console .trace-preset button{padding:4px 7px;border-radius:3px;text-decoration:none;font-size:12px;color:#526478}
+.run-console .trace-preset button:hover{background:#f3f6fa}.run-console .trace-preset button[aria-pressed=true]{background:#eaf2ff;color:#244e7c;font-weight:600}
+.run-console .trace-preset button:focus-visible{outline:2px solid #487bb1;outline-offset:1px}
+.run-console .execution-caption{height:36px;padding:0 12px}.run-console .execution-caption .execution-caption-tools{gap:6px}
+.run-console .execution-follow-label{display:none}.run-console .new-event-count{color:#315c8c;font-size:12px;white-space:nowrap}
+.run-console .console-trace-toolbar{font-size:13px;height:48px}.run-console .toolbar-title{font-size:14px}
+.run-console .console-search input,.run-console .console-trace-toolbar select,.run-console .console-trace-toolbar button{font-size:13px}
+.run-console .toolbar-count{font-size:12px}.run-console .console-event-name strong{font-size:15px}
+.run-console .console-event.trace-row{height:44px;min-height:44px}.run-console .trace-type{font-size:11px}
+.run-console .event-duration{font-size:13px}.run-console .trace-row-status .event-result{font-size:12px}
+.run-console .execution-footer{font-size:11px;height:30px}.run-console .inspector-head{font-size:15px;gap:7px;padding:0 16px}
+.run-console .inspector-copy{border:0;background:transparent;color:#64758a;cursor:pointer;display:grid;place-items:center;padding:5px;border-radius:3px;flex:none}
+.run-console .inspector-copy:hover{background:#edf3fa}.run-console .inspector-copy:focus-visible{outline:2px solid #487bb1}
+.run-console .selected-overview,.run-console .event-facts,.run-console .detail-absent{font-size:13px}
+.run-console .event-value summary,.run-console .selected-error h3,.run-console .event-context summary{font-size:14px}
+.run-console .event-value pre,.run-console .selected-error pre,.run-console .raw-inspector .source-code{font-size:13px;line-height:1.65}
+.run-console .event-origin-links,.run-console .event-references button,.run-console .workspace-notice{font-size:13px}
+.run-console .dock-bar>div>button{font-size:14px}.run-console .run-analysis-layout,.run-console .outcomes{font-size:14px;line-height:1.6}
+.run-console .hypothesis-statement{font-size:15px}.run-console .hypothesis-evidence .evidence-chip{font-size:13px}
+@media(max-width:1400px){.run-console .console-search{max-width:210px}.run-console .toolbar-count{font-size:11px}.run-console .console-trace-toolbar{gap:6px;padding:7px 12px}}
+@media(max-width:1020px){.run-console .console-split{grid-template-columns:minmax(0,1.3fr) minmax(285px,1fr)}.trace-divider{display:none}.run-console .console-trace-toolbar{height:auto;min-height:48px}.run-console .execution-caption .execution-caption-tools{gap:4px}}
+@media(max-width:760px){.run-console .console-split{display:flex}.run-console .console-event-name strong{font-size:14px}.run-console .trace-type{font-size:10px}}
+
+.run-console .execution-pane{container-type:inline-size}
+@container(max-width:560px){.run-console .trace-order-label,.run-console .time-scope>span{display:none}.run-console .execution-caption .execution-caption-tools{gap:3px}.run-console .trace-preset button{padding:4px 5px}}

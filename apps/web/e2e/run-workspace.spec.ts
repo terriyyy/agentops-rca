@@ -3,6 +3,9 @@ import {randomUUID} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// These legacy geometry/traceability cases intentionally inspect the full raw-event view.
+test.beforeEach(async({page})=>{await page.addInitScript(()=>{const id=location.pathname.match(/^\/runs\/([^/]+)/)?.[1];if(id&&!sessionStorage.getItem('agentops.trace-view.'+id))sessionStorage.setItem('agentops.trace-view.'+id,JSON.stringify({preset:'all'}));});});
+
 async function create(request:APIRequestContext,goal:string){
   const token=randomUUID()+randomUUID(),headers={Authorization:'Bearer '+token};
   const result=await request.post('/api/live/runs',{data:{request_id:randomUUID(),write_token:token,goal,sample_kind:'synthetic'}});
@@ -45,7 +48,7 @@ test('跨页证据定位、选择保持、失败日志和桌面工作区',async(
   expect(await page.locator('.execution-item.failed .duration-bar').evaluate(el=>getComputedStyle(el,'::after').content)).not.toBe('none');
   await expect(page.locator('.source-code')).toContainText('expected 2');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.keyboard.press('Escape');await expect(page.locator('.selected-error')).toContainText('AssertionError');
+  await page.getByRole('button',{name:'查看事件详情',exact:true}).click();await page.keyboard.press('Escape');await expect(page.locator('.selected-error')).toContainText('AssertionError');
   await expect(page.locator('.event-facts').first()).toContainText('pytest');
   await expect(page.locator('.event-origin-links .evidence-location')).toHaveCount(2);
   await page.locator('.execution-item.failed .inline-failure>button').click();
@@ -58,9 +61,9 @@ test('跨页证据定位、选择保持、失败日志和桌面工作区',async(
   await page.screenshot({path:'../../.local/screenshots/v04-console-failed-1366.png'});
   expect(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight)).toBeTruthy();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
-  const height=await page.locator('.run-dock').evaluate(el=>el.getBoundingClientRect().height);
-  await page.getByRole('separator',{name:'调整调查面板高度'}).focus();await page.keyboard.press('ArrowUp');
-  expect(await page.locator('.run-dock').evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThan(height);
+  await page.locator('.run-analysis-trigger').click();
+  expect(await page.locator('.run-investigation').evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThan(400);
+  await expect(page.locator('.run-dock')).toHaveCount(0);
   await page.getByRole('button',{name:'更多资料',exact:true}).click();
   await expect(page.locator('.technical-group')).toHaveCount(3);
   await expect(page.locator('.technical-group[open]')).toHaveCount(0);
@@ -175,7 +178,7 @@ test('历史时间与关系缺失保持平铺，导入时间不成为执行时�
   }));
   await page.getByRole('button',{name:'校验并导入'}).click();await page.getByRole('link',{name:'打开任务',exact:true}).click();
   const task=await (await request.get('/api/tasks/'+page.url().split('/').at(-1))).json();await page.goto('/runs/'+task.runs[0].run_id);
-  await expect(page.locator('.trace-row')).toHaveCount(7);await expect(page.locator('.toolbar-count')).toContainText('10 原始事件');await expect(page.locator('.execution-caption')).toContainText('时序事件列表');await expect(page.locator('.execution-footer')).toContainText('无可靠时间尺度');
+  await expect(page.locator('.trace-row')).toHaveCount(7);await expect(page.locator('.toolbar-count')).toContainText('10 原始事件');await expect(page.locator('.execution-caption')).toContainText('时序列表');await expect(page.locator('.execution-footer')).toContainText('无可靠时间尺度');
   await expect(page.locator('.event-timing')).toHaveCount(0);await expect(page.getByRole('button',{name:'收起子事件'})).toHaveCount(0);
 });
 
@@ -195,8 +198,8 @@ test('诊断进行中保留旧假设，RCA 预览与人工确认在切换面板�
   await page.route(`**/api/runs/${run.run_id}/analyst-preview`,route=>route.fulfill({json:{prompt:{selected_subtrajectory:'synthetic preview only'},prompt_sha256:'b'.repeat(64),preview_sha256:'c'.repeat(64),prompt_bytes:80,hgt_diagnosis_id:'hgt',model:'synthetic-model',provider:'mock',truncated:false}}));
   await page.route(`**/api/runs/${run.run_id}/analyst-jobs`,route=>{submissions.push(route.request().postDataJSON());return route.fulfill({json:{...baseJob,job_id:'mock-submit',mode:'analyst_rca',state:'queued'}});});
   await page.goto('/runs/'+run.run_id);
-  await expect(page.locator('.console-states')).toContainText('诊断作业进行中');await expect(page.locator('.hypothesis-statement')).toContainText('之前的待验证假设');
-  await expect(page.getByRole('button',{name:'预览并分析原因'})).toBeDisabled();phase='failed';
+  await page.locator('.run-analysis-trigger').click();await expect(page.locator('.console-states')).toContainText('诊断作业进行中');await expect(page.locator('.hypothesis-statement')).toContainText('之前的待验证假设');
+  await expect(page.locator('.analysis-active')).toContainText('原因分析');await expect(page.getByRole('button',{name:'取消作业'})).toBeEnabled();await expect(page.getByRole('button',{name:'确认发送并开始分析'})).toHaveCount(0);phase='failed';
   await expect(page.locator('.console-states')).toContainText('最近作业失败',{timeout:10000});
   await expect(page.locator('.hypothesis-statement')).toContainText('之前的待验证假设');
   await page.getByRole('button',{name:'预览并分析原因'}).click();await expect(page.locator('.analyst-preview')).toContainText('synthetic preview only');expect(submissions).toHaveLength(0);
@@ -278,8 +281,8 @@ test('分析记录与完整报告按需读取，保留选择/时间窗及全部�
   await page.route(`**/api/runs/${run.run_id}/diagnoses`,route=>route.fulfill({json:[report,old]}));let posts=0;
   await page.route('**/api/runs/*/analyst-jobs',route=>{posts++;return route.abort();});await page.route('**/api/runs/*/diagnosis-jobs',route=>route.request().method()==='POST'?(posts++,route.abort()):route.fulfill({json:[]}));
   await page.goto('/runs/'+run.run_id);await page.locator('.run-analysis-trigger').click();
-  await expect(page.locator('.console-states')).not.toContainText('尚未诊断');await expect(page.locator('.hypothesis-evidence')).toContainText('#01 run_tests · 调用参数');await expect(page.locator('.hypothesis-evidence')).toContainText('#02 run_tests · 返回 · 失败');
-  await page.getByRole('button',{name:'查看其余 2 条证据'}).click();await expect(page.locator('.hypothesis-evidence .evidence-chip')).toHaveCount(5);
+  await expect(page.locator('.console-states')).not.toContainText('尚未诊断');await expect(page.getByRole('button',{name:'#01 run_tests · 调用参数',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'#02 run_tests · 返回 · 失败',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'显示全部 5 条引用'}).click();await expect(page.locator('.hypothesis-evidence .evidence-chip')).toHaveCount(5);
   await page.getByRole('button',{name:'放大时间轴',exact:true}).click();const windowBefore=await page.locator('.time-ruler').getAttribute('data-view-start');const selection=await page.locator('.console-event.selected').getAttribute('data-event-id');
   await page.getByRole('button',{name:'查看完整报告',exact:true}).click();await expect(page.getByRole('dialog')).toContainText(report.summary);await expect(page.getByRole('dialog')).toContainText(report.boundary);
   await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'查看完整报告',exact:true})).toBeFocused();expect(await page.locator('.time-ruler').getAttribute('data-view-start')).toBe(windowBefore);await expect(page.locator('.console-event.selected')).toHaveAttribute('data-event-id',selection!);

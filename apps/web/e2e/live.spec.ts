@@ -7,6 +7,9 @@ import {randomUUID} from 'node:crypto';
 const root=path.resolve('../..');
 const python=path.join(root,'.venv/Scripts/python.exe');
 
+// Protocol latency is measured against the full raw log view, not the step preset.
+test.beforeEach(async({page})=>{await page.addInitScript(()=>{const id=location.pathname.match(/^\/runs\/([^/]+)/)?.[1];if(id)sessionStorage.setItem('agentops.trace-view.'+id,JSON.stringify({preset:'all'}));});});
+
 test('CLI → 工具开始先于结束 → 实时轨迹 → 验收证据 → 刷新恢复',async({page,request,baseURL})=>{
   const child=spawn(python,['-m','agentops_cli.cli','run','--server',baseURL!,'--sample-kind','synthetic','--goal','浏览器现场闭环','--spool-dir',path.join(root,'.local/browser-spool'),'--',python,'examples/local_agent.py','--fail','--delay','4','--tool-delay','3'],{cwd:root,windowsHide:true,env:{...process.env,PYTHONIOENCODING:'utf-8'}});
   let output='';child.stdout.on('data',chunk=>output+=chunk.toString());
@@ -21,7 +24,7 @@ test('CLI → 工具开始先于结束 → 实时轨迹 → 验收证据 → 刷
     expect(await page.locator('.trace-row').filter({hasText:'write_solution'}).filter({hasText:'Tool · 返回'}).count()).toBe(0);
     expect((await (await request.get('/api/runs/'+id)).json()).execution_status).toBe('running');
     await page.getByRole('button',{name:'暂停跟随',exact:true}).click();
-    await expect(page.getByText('已暂停跟随 · 可查看旧记录')).toBeVisible();
+    await expect(page.getByRole('button',{name:/^跟随最新/})).toHaveAttribute('aria-pressed','false');
     expect(await completion).toBe(0);
     await expect(page.locator('.run-status')).toContainText('完整');
     await expect(page.locator('.run-status')).toContainText('执行完成');

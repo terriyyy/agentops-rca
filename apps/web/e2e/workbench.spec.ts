@@ -25,14 +25,14 @@ test('导入 → 两轮对照 → 诊断证据 → 验收证据 → 去重', asy
   await page.getByRole('link',{name:'查看运行详情',exact:true}).first().click();
   await page.getByRole('tab',{name:/^原因分析/}).click();
   await page.locator('.evidence-chip.resolved').first().click();
-  await expect(page.getByRole('tab',{name:'原始证据',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.locator('.run-evidence-peek')).toBeVisible();await expect(page.locator('#analysis-panel')).toBeHidden();
   await expect(page.locator('.source-code')).toContainText('shared-test');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('tab',{name:/^任务检查/}).click();
   await page.getByRole('button',{name:'查看检查记录',exact:true}).click();
   await expect(page.locator('.source-code')).toContainText('synthetic_test_harness');
-  await page.getByRole('button',{name:'关闭证据',exact:true}).click();
+  await page.getByRole('button',{name:'返回任务检查',exact:true}).click();
   await expect(page.locator('.execution-pane')).toBeVisible();
   await expect(page.locator('.duration-bar')).toHaveCount(0); // Fixture timestamps and recorded durations disagree.
   await page.getByLabel('搜索事件').fill('assertion_failed');

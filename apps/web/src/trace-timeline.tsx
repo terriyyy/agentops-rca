@@ -45,6 +45,7 @@ export function TimelineNavigation({view,selected}:{view:TimelineView;selected:T
     <span className="timeline-zoom" title="当前时间窗的放大倍数">{Number(view.zoom.toFixed(1))}×</span>
     <button aria-label="放大时间轴" title="放大；选中步骤可见时以其为锚点" disabled={view.zoom>=127.9} onClick={()=>view.zoomBy(2,selectedTime??undefined)}><Plus size={14}/></button>
     <button aria-label="时间窗向后" title="向后移动半个时间窗" disabled={!view.canPanRight} onClick={()=>view.pan(1)}><ChevronRight size={14}/></button>
+    <span className="timeline-nav-divider" aria-hidden="true"/>
     <button aria-label="适配时间范围" title="恢复本页或整轮完整时间范围" onClick={view.fit}><Maximize2 size={13}/></button>
     <button aria-label="聚焦选中步骤时间" title="聚焦选中步骤的真实时间；也可双击步骤" disabled={!selected||selectedTime===null} onClick={()=>selected&&view.focus(selected)}><LocateFixed size={14}/></button>
   </span>;
