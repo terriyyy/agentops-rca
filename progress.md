@@ -313,3 +313,19 @@ R3/R4完成：真实反馈两轮，第一7af4add...10/14失败、第二25306a...
 - 全量浏览器尝试包含旧版实际HGT测试，停在旧UI按钮定位阶段；核对隔离DB diagnosis_jobs=0后停止该次测试，改为明确选择不运行真实HGT/模型的相关回归。未发生真实推理。测试仅使用隔离DB与确定性CLI例子。
 - 8000原服务确认无活跃Run后重启以加载只读API新增字段；现PID81672、session85278，保留供预览。8001隔离测试服务在验收后停止。第二批和本批均未提交或推送；Task History留待首页确认。
 - 截图：.local/home-refine-before-{1366,1440}.png / .local/home-refine-after-{1366,1440,390}.png。DESIGN_VARIANCE=2 / MOTION_INTENSITY=1 / VISUAL_DENSITY=7，无新依赖。
+
+
+## 2026-10-04：Task History下一批开始
+
+- 用户批准提交第二/第三批后继续下一批；17文件检查真实.env秘钥与常见凭据模式，0命中，diff通过；提交2a454e7 feat(workbench): refine Run view controls and home monitoring overview，工作区干净，未推送。
+- 已拍真实Task列表/两轮Task Detail旧版1366/1440截图；计划采用紧凑事实列表+原生选择/展开控件，不增加业务对象或后端功能。
+
+
+## 2026-10-04：Task History下一批完成
+
+- 新增task-history.tsx/css（TaskIndex/TaskHistoryView），main复用数据获取，删除旧RunCard/任务变化大卡片/常驻继续运行块；新列表、首末事实条、checkbox两轮选择、键盘排序、手工Run入口、再次运行/归组details。
+- ComparePage保留已有事实/证据视图，新增同任务left/right查询参数校验；单轮或相同运行不展示重复比较结果。UI刷新不重置选择/排序，不自动选入新增轮次；clipboard失败可重试，不执行命令。
+- 首次浏览器回归2项失败均为新测试定位错误：第三项选择被正确拒绝却使用check要求成功、notice选择匹配2个元素；改click及明确首项后16通过1跳过。最后提高文字对比度、入库秒精度和前驱Map后，Task6项复验全部通过。
+- tsc/Vite构建、diff检查通过；相关浏览器共16项通过，1项需指定真实历史记录跳过，另最终6项专项通过。覆盖两轮选择实际传递、真实新增/3秒刷新及故障保留、未知/历史/已有报告和作业失败、空/单轮、剪贴板重试、窄屏；未运行真实Agent/HGT/模型。无后端变更。
+- 已查看真实1366/1440 Task列表/两轮Detail/再次运行展开截图，390无横向溢出、页面错误0。截图.local/task-{list,history}-before/after-{1366,1440}.png，手机after-390；再次运行.task-history-again-after-1440.png。
+- 8000预览继续运行，8001隔离测试服务验收后停止（PID83924）。本批保留未提交以供用户调整；已提交的基线2a454e7未推送。

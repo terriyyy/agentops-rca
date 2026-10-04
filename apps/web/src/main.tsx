@@ -12,6 +12,7 @@ import { RunWorkspace } from './run-workspace';
 import {CaptureFeedback,HomeOverview,MonitorStart,homeSources} from './home-overview';
 import {RunViewContext,useRunViewState} from './run-view';
 import {HomeRunSection as HomeSection} from './home-run-list';
+import {TaskHistoryView,TaskIndex} from './task-history';
 
 function useData<T>(url: string, refresh = 0) {
   const [state, setState] = useState<{url:string;data: T | null; error: string; loading: boolean}>({url,data:null,error:'',loading:true});
@@ -103,36 +104,18 @@ function HomePage() {
 }
 
 function TasksPage() {
-  const {data:tasks,error,loading}=useData<Task[]>('/tasks');
-  const [query,setQuery]=useState('');
-  const visible=(tasks||[]).filter(task=>(task.external_id+' '+task.goal).toLowerCase().includes(query.toLowerCase()));
-  return <>
-    <div className="page-heading"><div><h1>任务历程</h1><p>一个任务目标可以有多次运行；每一轮的执行、诊断和验收分别保留。</p></div><Link className="button" to="/">返回运行工作台</Link></div>
-    <section className="panel task-panel"><div className="section-heading"><div><h2>全部任务 <span className="counter">{tasks?.length||0}</span></h2><p>从任务进入多轮历史；调查具体问题请打开对应运行。</p></div></div>
-      <div className="table-toolbar"><label className="search-box"><Search size={17}/><input aria-label="搜索任务" placeholder="搜索任务 ID 或目标…" value={query} onChange={event=>setQuery(event.target.value)}/></label></div>
-      {loading?<Loading/>:error?<ErrorBox text={error}/>:!visible.length?<Empty title={tasks?.length?'没有匹配的任务':'还没有任务'}>{tasks?.length?'尝试其他关键词。':<>先从<Link to="/">运行工作台</Link>开始实时监控，或导入历史记录。</>}</Empty>:<div className="table-scroll"><table className="tasks-table"><thead><tr><th>任务目标／来源</th><th>运行次数</th><th>最新一次执行</th><th>最新任务验收</th><th/></tr></thead><tbody>{visible.map(task=>{const latest=task.runs.at(-1);return <tr key={task.id}><td><Link className="task-link" to={'/tasks/'+task.id}><div className="task-icon"><Code2 size={19}/></div><div><strong>{task.goal}</strong><small>{latest&&<SourceLabels run={latest}/>} · {task.external_id}</small></div></Link></td><td>{task.runs.length} 次</td><td>{latest?executionNames[latest.execution_status]:'尚无运行'}</td><td><Badge status={task.outcome_status}/></td><td><Link className="row-arrow" aria-label={'打开任务 '+task.external_id} to={'/tasks/'+task.id}><ArrowUpRight size={19}/></Link></td></tr>})}</tbody></table></div>}
-      <div className="table-foot"><span>{visible.length} 条任务</span><span><ShieldCheck size={13}/>此处验收是最新一轮结果</span></div>
-    </section>
-  </>;
+  const [refresh,setRefresh]=useState(0);
+  const {data:tasks,error,loading}=useData<Task[]>('/tasks',refresh);
+  return <TaskIndex tasks={tasks} error={error} loading={loading} onRefresh={()=>setRefresh(value=>value+1)} renderSource={run=><SourceLabels run={run}/>}/>;
 }
 
 function Back({to,children}: {to:string;children:React.ReactNode}) {return <Link className="back-link" to={to}><ArrowLeft size={14}/>{children}</Link>;}
-function RunCard({run}: {run:Run}) {
-  return <Link className="run-card" to={'/runs/'+run.run_id}><div className="run-card-top"><span className="run-number">第 {run.attempt_index} 次运行</span><SourceLabels run={run}/></div><h3>{new Date(run.created_at).toLocaleString('zh-CN')} <ArrowUpRight size={16}/></h3><div className="run-card-facts"><div><span>执行状态</span><strong>{executionNames[run.execution_status]}</strong></div><div><span>任务验收</span><strong>{outcomeNames[run.outcome_status]}</strong></div><div><span>诊断进度</span><strong><DiagnosisLabel run={run}/></strong></div></div><div className="run-card-foot"><span>{formatNumber(run.event_count)} 条事件</span><span>{run.insight?.attention_reasons.length?run.insight.attention_reasons.map(reason=>attentionNames[reason]||reason).join(' · '):'查看这次运行'}</span></div></Link>;
-}
 function TaskPage() {
-  const {taskId}=useParams();const [refresh,setRefresh]=useState(0);const [copied,setCopied]=useState(false);
+  const {taskId}=useParams();const [refresh,setRefresh]=useState(0);
   useEffect(()=>{const timer=setInterval(()=>setRefresh(value=>value+1),3000);return()=>clearInterval(timer);},[]);
   const {data:task,error,loading}=useData<Task>('/tasks/'+taskId,refresh);
-  if(loading)return <Loading/>;if(error||!task)return <ErrorBox text={error}/>;
-  const first=task.runs[0],latest=task.runs.at(-1);
-  return <><Back to="/tasks">全部任务</Back><div className="page-heading compact"><div><div className="eyebrow">同一目标的运行历程</div><h1>{task.goal}</h1><p>已记录 {task.runs.length} 次运行；每轮执行、诊断和验收各自保留。</p></div>{task.runs.length>1&&<Link className="button" to={'/tasks/'+task.id+'/compare'}><GitCompareArrows size={17}/>比较两次运行</Link>}</div>
-    {first&&latest&&task.runs.length>1&&<section className="panel task-change"><h2>从第 {first.attempt_index} 次到第 {latest.attempt_index} 次</h2><p>任务验收：{outcomeNames[first.outcome_status]} → {outcomeNames[latest.outcome_status]}；执行状态：{executionNames[first.execution_status]} → {executionNames[latest.execution_status]}。</p><small>这里只陈述记录到的变化，不证明诊断或干预导致了后一次结果。</small></section>}
-    <div className="section-heading standalone"><div><h2>运行历程</h2><p>打开某一轮，查看事实、失败线索、根因假设与独立验收。</p></div></div>
-    <div className="run-grid">{task.runs.map(run=><RunCard key={run.run_id} run={run}/>)}</div>
-    {task.namespace==='live'?<section className="panel continue-task"><h2>在同一任务下再次运行</h2><p>在本机终端启动 Agent 时传入以下任务 ID，并保持原任务目标和样例类型一致。平台不会自动执行命令，也不会按名称猜测两轮的关系。</p><div className="command-line"><code>--task-id {task.id}</code><button className="button" onClick={async()=>{try{await navigator.clipboard.writeText(task.id);setCopied(true);}catch{setCopied(false);}}}>{copied?'已复制任务 ID':'复制任务 ID'}</button></div><p>需要把此参数加入原来的 <code>agentops run</code> 命令；目标及样例类型必须与本任务相同。</p></section>:<section className="panel continue-task"><h2>历史任务的归组</h2><p>这些轮次由导入清单明确归组。后续现场运行默认创建新任务；只有确认目标和样例性质完全相同时，才应显式关联已有任务 ID。平台不会按名称自动合并。</p></section>}
-    <details className="panel task-technical"><summary>查看任务来源与归组详情</summary><dl><div><dt>任务 ID</dt><dd className="mono">{task.id}</dd></div><div><dt>来源命名空间</dt><dd>{task.namespace}</dd></div><div><dt>原始任务标识</dt><dd>{task.external_id}</dd></div><div><dt>轮次依据</dt><dd>{task.namespace==='live'?'明确的任务 ID 与启动时分配的轮次':'导入清单给出的轮次；原始 attempt 另行保存'}</dd></div></dl></details>
-  </>;
+  if(loading&&!task)return <Loading/>;if(!task)return <ErrorBox text={error}/>;
+  return <TaskHistoryView key={task.id} task={task} error={error} renderSource={run=><SourceLabels run={run}/>}/>;
 }
 
 function RunPage() {
@@ -166,15 +149,23 @@ function Overview({run}: {run:Run}) {
 }
 
 function ComparePage() {
-  const {taskId}=useParams();const {data:task,error,loading}=useData<Task>('/tasks/'+taskId);
+  const {taskId}=useParams();const location=useLocation();const {data:task,error,loading}=useData<Task>('/tasks/'+taskId);
+  const [invalidSelection,setInvalidSelection]=useState(false);
   const [left,setLeft]=useState('');const [right,setRight]=useState('');
-  useEffect(()=>{if(task){setLeft(task.runs[0]?.run_id||'');setRight(task.runs.at(-1)?.run_id||'');}},[task]);
+  useEffect(()=>{if(task){
+    const params=new URLSearchParams(location.search),requestedLeft=params.get('left'),requestedRight=params.get('right');
+    const valid=requestedLeft!==requestedRight&&task.runs.some(run=>run.run_id===requestedLeft)&&task.runs.some(run=>run.run_id===requestedRight);
+    setInvalidSelection(!!(requestedLeft||requestedRight)&&!valid);
+    setLeft(valid?requestedLeft!:task.runs[0]?.run_id||'');setRight(valid?requestedRight!:task.runs.at(-1)?.run_id||'');
+  }},[task,location.search]);
   if(loading)return <Loading/>;if(error||!task)return <ErrorBox text={error}/>;
   const a=task.runs.find(run=>run.run_id===left),b=task.runs.find(run=>run.run_id===right);
   return <><Back to={'/tasks/'+task.id}>返回任务历程</Back><div className="page-heading compact"><div><h1>比较两次运行</h1><p>{task.goal}</p></div></div>
-    <div className="compare-selectors">{[[left,setLeft],[right,setRight]].map(([value,setter],index)=><label key={index}><span>{index===0?'基准运行':'对照运行'}</span><select aria-label={index===0?'基准运行':'对照运行'} value={value as string} onChange={event=>(setter as (value:string)=>void)(event.target.value)}>{task.runs.map(run=><option key={run.run_id} value={run.run_id}>第 {run.attempt_index} 次 · {new Date(run.created_at).toLocaleString('zh-CN')}</option>)}</select></label>)}</div>
-    {left===right&&<div className="notice">当前选择了同一次运行，请选择不同轮次。</div>}
-    {a&&b&&<><section className="panel comparison"><table><thead><tr><th>可核对的事实</th><th>第 {a.attempt_index} 次运行</th><th>第 {b.attempt_index} 次运行</th></tr></thead><tbody><tr><td>任务验收</td><td>{outcomeNames[a.outcome_status]}</td><td>{outcomeNames[b.outcome_status]}</td></tr><tr><td>执行状态</td><td>{executionNames[a.execution_status]}</td><td>{executionNames[b.execution_status]}</td></tr><tr><td>诊断进度</td><td><DiagnosisLabel run={a}/></td><td><DiagnosisLabel run={b}/></td></tr><tr><td>失败线索</td><td>{a.insight?.failure_signals.length||0} 条</td><td>{b.insight?.failure_signals.length||0} 条</td></tr></tbody></table><div className="notice">前后变化是记录到的事实；仅凭轮次顺序不能证明 RCA 假设或干预导致后一次结果。</div><details className="compare-technical"><summary>查看辅助计数</summary><table><thead><tr><th>维度</th><th>第 {a.attempt_index} 次</th><th>第 {b.attempt_index} 次</th></tr></thead><tbody>{[['原始事件',a.event_count,b.event_count],['采集工具调用',a.tool_call_count,b.tool_call_count],['失败工具返回',a.failed_tool_count,b.failed_tool_count]].map(([label,av,bv])=><tr key={label}><td>{label}</td><td>{av}</td><td>{bv}</td></tr>)}</tbody></table></details></section><div className="compare-columns"><CompareDetail run={a}/><CompareDetail run={b}/></div></>}
+    <div className="compare-selectors">{[[left,setLeft],[right,setRight]].map(([value,setter],index)=><label key={index}><span>{index===0?'基准运行':'对照运行'}</span><select aria-label={index===0?'基准运行':'对照运行'} value={value as string} onChange={event=>{setInvalidSelection(false);(setter as (value:string)=>void)(event.target.value);}}>{task.runs.map(run=><option key={run.run_id} value={run.run_id}>第 {run.attempt_index} 次 · {new Date(run.created_at).toLocaleString('zh-CN')}</option>)}</select></label>)}</div>
+    {invalidSelection&&<div className="notice">链接中的运行选择无效，已显示本任务的首末运行。</div>}
+    {task.runs.length<2&&<div className="notice">需要两次不同运行才能对比。请返回任务历程查看已有记录。</div>}
+    {task.runs.length>=2&&left===right&&<div className="notice">当前选择了同一次运行，请选择不同轮次。</div>}
+    {a&&b&&left!==right&&<><section className="panel comparison"><table><thead><tr><th>可核对的事实</th><th>第 {a.attempt_index} 次运行</th><th>第 {b.attempt_index} 次运行</th></tr></thead><tbody><tr><td>任务验收</td><td>{outcomeNames[a.outcome_status]}</td><td>{outcomeNames[b.outcome_status]}</td></tr><tr><td>执行状态</td><td>{executionNames[a.execution_status]}</td><td>{executionNames[b.execution_status]}</td></tr><tr><td>诊断进度</td><td><DiagnosisLabel run={a}/></td><td><DiagnosisLabel run={b}/></td></tr><tr><td>失败线索</td><td>{a.insight?.failure_signals.length||0} 条</td><td>{b.insight?.failure_signals.length||0} 条</td></tr></tbody></table><div className="notice">前后变化是记录到的事实；仅凭轮次顺序不能证明 RCA 假设或干预导致后一次结果。</div><details className="compare-technical"><summary>查看辅助计数</summary><table><thead><tr><th>维度</th><th>第 {a.attempt_index} 次</th><th>第 {b.attempt_index} 次</th></tr></thead><tbody>{[['原始事件',a.event_count,b.event_count],['采集工具调用',a.tool_call_count,b.tool_call_count],['失败工具返回',a.failed_tool_count,b.failed_tool_count]].map(([label,av,bv])=><tr key={label}><td>{label}</td><td>{av}</td><td>{bv}</td></tr>)}</tbody></table></details></section><div className="compare-columns"><CompareDetail run={a}/><CompareDetail run={b}/></div></>}
   </>;
 }
 function CompareDetail({run}: {run:Run}) {

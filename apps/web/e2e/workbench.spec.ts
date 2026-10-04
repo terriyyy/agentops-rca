@@ -17,7 +17,7 @@ test('导入 → 两轮对照 → 诊断证据 → 验收证据 → 去重', asy
   await expect(page.getByRole('status')).toContainText(/导入完成|记录已存在/);
   await page.getByRole('link',{name:'打开任务',exact:true}).click();
   await expect(page.getByRole('heading',{level:1})).toContainText('修复矩阵写入逻辑');
-  await expect(page.locator('.run-card').first()).toContainText('合成演示');
+  await expect(page.locator('.history-run-table tbody tr').first()).toContainText('合成演示');
   await page.getByRole('link',{name:'比较两次运行',exact:true}).click();
   await expect(page.locator('.comparison')).toContainText('验收未通过');
   await expect(page.locator('.comparison')).toContainText('验收通过');

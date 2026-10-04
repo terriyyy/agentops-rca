@@ -1,5 +1,16 @@
 # AgentOps 方案审查计划
 
+## 当前开发：Task History 精修（下一批，2026-10-04）
+
+状态：complete，待视觉反馈。用户已批准下一批与提交回退点；基线2a454e7已提交Run视图控制和首页精修，未推送。design-taste-frontend 保留式审查，DESIGN_VARIANCE=2 / MOTION_INTENSITY=1 / VISUAL_DENSITY=7；React/CSS/Lucide沿用，无新依赖。
+
+- [x] T1：Task列表精修——收敛标题/搜索/列，去掉长ID堆叠，保留完整title/原始来源，最新执行与检查独立。
+- [x] T2：Task Detail——紧凑Header、首末事实摘要、对齐多轮列表，取代Run大卡片；可排序/选择两轮，按真实轮次计算前后变化，不推断因果。
+- [x] T3：对比选择联动——Task选择传至现有Compare页面，校验同任务且不同Run；只有一轮禁用对比；再次运行/归组/技术信息按需展开，复制失败有反馈。
+- [x] T4：空/单轮/多轮/unknown/实时刷新/存储与键盘；构建、浏览器回归、1366/1440/390真实页前后截图，用户确认前保留本批未提交。
+
+边界：首页和Run Detail不重构，无后端修改、自动模型调用、真实Agent/HGT执行；Task不执行命令，不标记修复成功或假设已验证。
+
 ## 当前开发：首页精修第三批（2026-10-04）
 
 状态：complete，待首页视觉反馈。保留 Run-centric 信息架构与第二批未提交改动，使用 design-taste-frontend 保留式精修；DESIGN_VARIANCE=2 / MOTION_INTENSITY=1 / VISUAL_DENSITY=7。只精修首页，Task History 待首页视觉确认。
