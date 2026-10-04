@@ -2,13 +2,14 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Activity, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Blocks, Check, CheckCircle2, ChevronLeft, ChevronRight, Circle, Clock3, Code2, Database, FileJson, FileSearch, FileText, FlaskConical, GitCompareArrows, GitBranch, Layers3, ListFilter, Loader2, Plus, Search, Settings2, ShieldCheck, Terminal, Upload, X } from 'lucide-react';
-import { api, pretty, outcomeNames, executionNames, diagnosisNames, attentionNames, modelNames, warningNames, type Diagnosis, type Evidence, type ImportResult, type Outcome, type Run, type Task, type TraceEvent, type WorkbenchOverview } from './api';
+import { api, pretty, outcomeNames, executionNames, diagnosisNames, attentionNames, modelNames, warningNames, type Diagnosis, type Evidence, type ImportResult, type Outcome, type Run, type Task, type TraceEvent, type WorkbenchOverview, type HomeSource } from './api';
 import './styles.css';
 import { useLiveRun } from './live';
 import { DiagnosisJobHistory,type Capabilities } from './diagnosis';
 import type {RunAnalysis} from './run-analysis';
 import {AnalysisPanel,CheckPanel,ReportView} from './run-panels';
 import { RunWorkspace } from './run-workspace';
+import {CaptureFeedback,HomeOverview,MonitorStart,homeSources} from './home-overview';
 
 function useData<T>(url: string, refresh = 0) {
   const [state, setState] = useState<{url:string;data: T | null; error: string; loading: boolean}>({url,data:null,error:'',loading:true});
@@ -79,32 +80,39 @@ function HomeRun({run}: {run:Run}) {
   </Link>;
 }
 
-function HomeSection({title,description,runs,empty}: {title:string;description:string;runs:Run[];empty:string}) {
-  return <section className="panel workbench-section"><div className="section-heading"><div><h2>{title} <span className="counter">{runs.length}</span></h2><p>{description}</p></div></div>
+function HomeSection({title,description,runs,empty,id,count}: {title:string;description:string;runs:Run[];empty:string;id?:string;count?:number}) {
+  return <section className="panel workbench-section"><div className="section-heading"><div><h2 id={id} tabIndex={-1}>{title} <span className="counter">{count??runs.length}</span></h2><p>{description}{count!==undefined&&count>runs.length&&` 当前显示最近 ${runs.length} 条。`}</p></div></div>
     {runs.length?<div>{runs.map(run=><HomeRun key={run.run_id} run={run}/>)}</div>:<p className="workbench-empty">{empty}</p>}
   </section>;
 }
 
 function HomePage() {
-  const [refresh,setRefresh]=useState(0);
+  const [refresh,setRefresh]=useState(0),[start,setStart]=useState(false);
+  const [source,setSource]=useState<HomeSource>(()=>{try{const value=sessionStorage.getItem('agentops.home.source');return value&&value in homeSources?value as HomeSource:'live';}catch{return 'live';}});
+  const [updated,setUpdated]=useState<string|null>(null);
   useEffect(()=>{const timer=setInterval(()=>setRefresh(value=>value+1),3000);return()=>clearInterval(timer);},[]);
-  const {data,error,loading}=useData<WorkbenchOverview>('/overview?limit=20',refresh);
-  const [busy,setBusy]=useState(false);const [actionError,setActionError]=useState('');const [copied,setCopied]=useState(false);
-  const navigate=useNavigate();
-  const command='.\\.venv\\Scripts\\agentops.exe run --goal "任务目标" -- .\\.venv\\Scripts\\python.exe your_agent.py';
+  useEffect(()=>{try{sessionStorage.setItem('agentops.home.source',source);}catch{/* Browsing remains available without storage. */}},[source]);
+  const {data,error,loading}=useData<WorkbenchOverview>(`/overview?limit=20&source=${source}&include_summary=true`,refresh);
+  useEffect(()=>{if(data)setUpdated(new Date().toLocaleTimeString('zh-CN'));},[data]);
+  const [busy,setBusy]=useState(false),[actionError,setActionError]=useState('');
+  const navigate=useNavigate(),summary=data?.summary||null;
   async function demo(){setBusy(true);setActionError('');try{const result=await api<ImportResult>('/examples/import',{method:'POST'});navigate('/runs/'+result.run_ids[0]);}catch(e){setActionError((e as Error).message);}finally{setBusy(false);}}
-  async function copy(){try{await navigator.clipboard.writeText(command);setCopied(true);}catch{setActionError('复制失败；可直接选中命令复制。');}}
-  return <>
-    <div className="page-heading"><div><h1>运行工作台</h1><p>从一次 Agent 运行开始，观察执行、调查失败，并核对独立验收。</p></div><Link className="button" to="/tasks">查看任务历程<ArrowUpRight size={16}/></Link></div>
-    <section className="panel start-panel"><div><span className="eyebrow">开始实时监控</span><h2>在终端启动你的 Agent，打开返回的 Run 链接。</h2><p>平台服务启动后，在另一个终端于项目根目录运行。Agent 仍在本机执行；网页接收运行记录，不替你执行上传的命令。</p><div className="command-line"><code>{command}</code><button className="button" onClick={copy}>{copied?'已复制':'复制命令'}</button></div><p>已有 Python 工具函数可接入 <code>@tool</code> 以记录工具调用；没有独立检查证据时，任务验收保持“未知”。</p></div><div className="start-demo"><strong>先看一份演示记录</strong><p>导入明确标为演示样例的两轮历史数据，直接打开失败运行。演示结果不代表真实诊断效果。</p><button className="button" onClick={demo} disabled={busy}>{busy?'正在载入…':'载入演示样例'}</button><Link className="text-button" to="/imports">导入历史记录<ArrowUpRight size={14}/></Link></div></section>
-    {actionError&&<ErrorBox text={actionError}/>}
-    {error&&<ErrorBox text={error}/>}
+  function openStart(){setActionError('');setStart(true);}
+  function section(id:string){const heading=document.getElementById(id);heading?.scrollIntoView({block:'start'});heading?.focus({preventScroll:true});}
+  return <div className="home-workbench">
+    <div className="page-heading"><div><h1>运行工作台</h1><p>监控 Agent 执行，调查失败原因，核对任务检查。</p></div><div className="home-heading-actions"><Link to="/tasks">任务历程<ArrowUpRight size={14}/></Link><button className="button" onClick={openStart}><Terminal size={16}/>开始监控</button></div></div>
+    <div className="home-scope-bar"><label>记录来源<select aria-label="记录来源" value={source} onChange={event=>setSource(event.target.value as HomeSource)}>{Object.entries(homeSources).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label><span>状态为当前数量 · 用量取最近 20 次入库记录</span><small>{loading?'正在读取…':error?'更新失败':updated?`自动刷新 · ${updated}`:'等待数据'}</small><button className="home-refresh" onClick={()=>setRefresh(value=>value+1)}>刷新</button></div>
+    {error&&<div className="home-refresh-error" role="alert">{data?'刷新失败，保留上次数据。':'无法读取运行记录。'} {error}<button className="text-button" onClick={()=>setRefresh(value=>value+1)}>重试</button></div>}
+    <HomeOverview key={source} summary={summary} onSection={section}/>
+    {summary?.all_runs===0?<section className="home-first-use"><div><h2>让你的第一次运行出现在这里</h2><p>选择接入方式 → 在终端启动 → 打开 Run 链接。也可以先查看无模型演示。</p></div><button className="button" onClick={openStart}>查看接入步骤<ArrowUpRight size={15}/></button></section>:summary&&<CaptureFeedback summary={summary} renderSource={run=><SourceLabels run={run}/>}/>}
+    {summary&&summary.total_runs===0&&summary.all_runs>0&&<p className="home-dialog-scope">“{homeSources[source]}”下暂无记录；其他来源已有 {summary.all_runs} 次运行。<button className="text-button" onClick={()=>setSource('all')}>查看全部来源</button></p>}
     {loading&&!data?<Loading/>:data&&<div className="workbench-sections">
-      <HomeSection title="正在运行" description="打开运行后可实时查看采集到的步骤。" runs={data.running} empty="当前没有正在运行的 Agent；可按上方命令开始一次运行。"/>
-      <HomeSection title="需要处理" description="执行异常、验收未通过、采集不完整或诊断作业失败的运行。" runs={data.attention} empty="目前没有需要处理的问题运行。验收未知仍会保留在运行记录中。"/>
-      <HomeSection title="其他最近运行" description="已在上方出现的运行不重复列出。" runs={data.recent} empty="暂无其他运行记录。"/>
+      <HomeSection id="home-running" count={summary?.running} title="正在运行" description="打开 Run 查看实时采集的步骤。" runs={data.running} empty="所选来源下没有正在运行的 Agent。"/>
+      <HomeSection id="home-attention" count={summary?.attention} title="需要处理" description="执行异常、检查未通过、采集不完整或诊断作业失败。" runs={data.attention} empty="所选来源下暂时没有需要处理的运行。"/>
+      <HomeSection id="home-recent" title="其他最近运行" description="已在上方出现的 Run 不重复列出；按入库顺序排列。" runs={data.recent} empty="暂无其他运行记录。"/>
     </div>}
-  </>;
+    {start&&<MonitorStart close={()=>setStart(false)} demo={demo} busy={busy} error={actionError}/>}
+  </div>;
 }
 
 function TasksPage() {

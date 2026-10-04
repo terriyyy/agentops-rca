@@ -3,6 +3,7 @@ import os
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -149,9 +150,10 @@ def create_app(db_path=None, diagnosis_config=None):
             return result
 
     @app.get('/api/overview')
-    def overview(limit:int=Query(20,ge=1,le=50)):
+    def overview(limit:int=Query(20,ge=1,le=50), source:Literal['all','live','imported','synthetic']='all', include_summary:bool=False):
         with store.connect() as db:
-            return workbench_overview(db,limit)
+            db.execute('BEGIN')
+            return workbench_overview(db,limit,source,include_summary)
 
     @app.get('/api/tasks/{id}')
     def task_detail(id:str):

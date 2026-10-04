@@ -19,7 +19,15 @@ export interface DiagnosisSnapshot {
   latest_job:{job_id:string;mode:string;state:string;error:string|null}|null;
 }
 export interface RunInsight {diagnosis:DiagnosisSnapshot;failure_signals:FailureSignal[];attention_reasons:string[]}
-export interface WorkbenchOverview {running:Run[];attention:Run[];recent:Run[]}
+export type HomeSource='live'|'imported'|'synthetic'|'all';
+export interface HomeSample {run_id:string;goal:string;created_at:string;origin:string;sample_kind:string;outcome_status:string;tokens:number|null;responses:number;with_total:number}
+export interface HomeSummary {
+  source:HomeSource;running:number;attention:number;total_runs:number;all_runs:number;
+  sample:{limit:number;count:number;items:HomeSample[]};
+  tokens:{value:number|null;responses:number;with_total:number;uncertain_events:number};
+  feedback:{run:Run;events:number;tools:{observed:number;paired:number;failed:number;unpaired_calls:number};model_responses:number;with_total:number;outcomes:number}|null;
+}
+export interface WorkbenchOverview {running:Run[];attention:Run[];recent:Run[];summary?:HomeSummary}
 export interface ModelUsage {input_tokens:number|null;output_tokens:number|null;total_tokens:number|null;source:string;total_derived:boolean;warnings:string[]}
 export interface ModelCall {event_id:string;evidence_id:string|null;start_event_id:string|null;end_event_id:string|null;position:number;state:string;response_only:boolean;model:string|null;duration_ms:number|null;usage:ModelUsage|null}
 export interface RunMetrics {

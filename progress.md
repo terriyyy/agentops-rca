@@ -1,5 +1,13 @@
 # 进度
 
+## 2026-10-04：首页概览与接入反馈第二段
+
+用户确认首段，要求先提交再进入下一阶段。已提交e588d39 feat(metrics): add verified Run usage summary and trace-linked model details（11文件），提交前凭据/私有大文件扫描无命中，提交后工作区干净；没有推送。继续design-taste-frontend的审查与planning-with-files。开始U3，U4及Run页本轮不改。
+
+U3完成：首页默认真实实时并提供真实历史/合成演示/全部来源；四项紧凑概览可点击，当前状态计数不受列表limit截断，Token复用U1并明确最近20次入库范围。最新实时Run反馈展示事件/工具及配对/总用量响应覆盖/实际检查，并单独标事件交付完整性；执行状态不替代验收。开始监控改为按需弹窗，给出已有Python/无模型演示、命令复制、真实采集能力和显式工具示例。首次为空、来源为空、刷新失败保留旧值分别处理；无模型调用、无Agent执行。
+
+验收：API/统计/原工作台Python13项通过；首页/用量/导入浏览器7通过、1项真实SymPy条件跳过；生产构建及diff检查通过。首次刷新测试因innerText/textContent格式不同误失败，改为一致取文本后通过。实际5条真实实时记录、0运行/3待处理、64572Token覆盖12/19模型响应；最新Run170事件/10工具/7用量响应/1份通过检查。截图.local/home-before-1366.png、home-after-1366.png及1440版本、home-after-390.png、home-start-monitor.png、home-usage-sample.png，三尺寸无横向溢出。8000保留新版本供预览；独立8001测试数据库没有写正式库，验收服务关闭。用户已确认U3并授权先提交后进入U4。本次提交包含首页代码、测试及实施记录，无凭据/权重/数据库/截图；没有推送。
+
 ## 2026-10-04：用量 UI 第一段
 
 已完成旧改动提交：48fff7c feat(collector): bridge AgentTether capture and verify real-agent monitoring；e721ade docs: document product gaps, team roles, and frontend metrics review。工作区在新实施前干净；未推送。开始U1+U2，首段效果完成后保留后续U3/U4待用户反馈。初次规划标题匹配错误已修正。

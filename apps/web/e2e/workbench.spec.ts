@@ -38,6 +38,7 @@ test('导入 → 两轮对照 → 诊断证据 → 验收证据 → 去重', asy
   await page.getByLabel('搜索事件').fill('assertion_failed');
   await expect(page.locator('.trace-row')).toHaveCount(1);
   await page.getByRole('link',{name:'运行工作台',exact:true}).click();
+  await page.getByRole('combobox',{name:'记录来源'}).selectOption('synthetic');
   await expect(page.getByRole('heading',{name:'需要处理',exact:false})).toBeVisible();
   await expect(page.locator('.workbench-run').filter({hasText:'修复矩阵写入逻辑'}).first()).toBeVisible();
   await page.screenshot({path:'../../.local/screenshots/workbench.png',fullPage:true});

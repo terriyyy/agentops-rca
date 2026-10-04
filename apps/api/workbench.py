@@ -6,6 +6,7 @@ execution, outcome, diagnosis, or capture records.
 
 from .live import live_view
 from .storage import payload
+from .run_metrics import MAX_COUNT, run_metrics
 
 
 FAILED_JOB_STATES = {'failed', 'timed_out', 'interrupted'}
@@ -112,42 +113,88 @@ def projected_run(db, row, task=None):
             'insight': run_insight(db, run)}
 
 
-def overview(db, limit=20):
-    # Query each bucket independently so an old, still-running Run is not
-    # displaced by a large number of newer completed Runs.
-    active_rows = db.execute('''
-        SELECT * FROM runs WHERE json_extract(payload,'$.execution_status')='running'
-        ORDER BY rowid DESC LIMIT ?
-    ''', (limit,)).fetchall()
-    attention_rows = db.execute('''
-        SELECT * FROM runs AS r WHERE
-          json_extract(r.payload,'$.execution_status')='failed' OR
-          json_extract(r.payload,'$.outcome_status')='failed' OR
-          (json_extract(r.payload,'$.origin')='live' AND
-           json_extract(r.payload,'$.execution_status')!='running' AND
-           json_extract(r.payload,'$.capture_integrity') IN ('pending','partial')) OR
-          EXISTS (SELECT 1 FROM diagnosis_jobs AS j WHERE j.run_id=r.id AND
-            j.id=(SELECT j2.id FROM diagnosis_jobs AS j2 WHERE j2.run_id=r.id
-                  ORDER BY j2.created_at DESC,j2.rowid DESC LIMIT 1) AND
-            j.state IN ('failed','timed_out','interrupted'))
-        ORDER BY r.rowid DESC LIMIT ?
-    ''', (limit,)).fetchall()
-    recent_rows = db.execute('SELECT * FROM runs ORDER BY rowid DESC LIMIT ?', (limit,)).fetchall()
+SOURCE_FILTERS = {
+    'all': '1',
+    'live': "json_extract(r.payload,'$.origin')='live' AND json_extract(r.payload,'$.sample_kind')='live'",
+    'imported': "json_extract(r.payload,'$.origin')='imported' AND json_extract(r.payload,'$.sample_kind')='historical'",
+    'synthetic': "json_extract(r.payload,'$.sample_kind')='synthetic'",
+}
+ATTENTION_FILTER = """json_extract(r.payload,'$.execution_status')!='running' AND (
+    json_extract(r.payload,'$.execution_status')='failed' OR
+    json_extract(r.payload,'$.outcome_status')='failed' OR
+    (json_extract(r.payload,'$.origin')='live' AND
+     json_extract(r.payload,'$.capture_integrity') IN ('pending','partial')) OR
+    EXISTS (SELECT 1 FROM diagnosis_jobs AS j WHERE j.run_id=r.id AND
+      j.id=(SELECT j2.id FROM diagnosis_jobs AS j2 WHERE j2.run_id=r.id
+            ORDER BY j2.created_at DESC,j2.rowid DESC LIMIT 1) AND
+      j.state IN ('failed','timed_out','interrupted'))
+)"""
+
+
+def overview(db, limit=20, source='all', include_summary=False):
+    # Buckets and counts share the same source predicate. Counts are not capped.
+    selected = SOURCE_FILTERS[source]
+    active = "json_extract(r.payload,'$.execution_status')='running'"
+
+    def rows(where):
+        return db.execute(f'SELECT r.* FROM runs AS r WHERE ({selected}) AND ({where}) ORDER BY r.rowid DESC LIMIT ?', (limit,)).fetchall()
+
+    def size(where):
+        return db.execute(f'SELECT COUNT(*) FROM runs AS r WHERE ({selected}) AND ({where})').fetchone()[0]
+
+    active_rows, attention_rows, recent_rows = rows(active), rows(ATTENTION_FILTER), rows('1')
     cache = {}
 
-    def project(rows, exclude=None):
-        items = []
-        for row in rows:
+    def project(records, exclude=None):
+        result = []
+        for row in records:
             if exclude and row['id'] in exclude:
                 continue
             if row['id'] not in cache:
                 cache[row['id']] = projected_run(db, row)
-            items.append(cache[row['id']])
-        return items
+            result.append(cache[row['id']])
+        return result
 
     running = project(active_rows)
-    running_ids = {run['run_id'] for run in running}
-    attention = project(attention_rows, running_ids)
-    occupied = running_ids | {run['run_id'] for run in attention}
+    attention = project(attention_rows)
+    occupied = {run['run_id'] for run in running + attention}
     recent = project(recent_rows, occupied)
-    return {'running': running, 'attention': attention, 'recent': recent}
+    result = {'running': running, 'attention': attention, 'recent': recent}
+    if not include_summary:
+        return result
+
+    sample, values, responses, with_total, uncertain = [], [], 0, 0, 0
+    for row in recent_rows:
+        # Only model metadata is needed for this bounded usage sample.
+        run = project([row])[0]
+        events = [payload(item) for item in db.execute(
+            "SELECT * FROM events WHERE run_id=? AND json_extract(payload,'$.kind')='llm' ORDER BY position", (run['run_id'],))]
+        metric = run_metrics(run, events)
+        token = metric['tokens']['total']
+        if token['value'] is not None:
+            values.append(token['value'])
+        responses += metric['tokens']['responses']
+        with_total += token['responses']
+        uncertain += metric['llm']['ambiguous_events'] + metric['llm']['unclassified_events']
+        sample.append({'run_id':run['run_id'], 'goal':run['task_goal'], 'created_at':run['created_at'],
+                       'origin':run['origin'], 'sample_kind':run['sample_kind'],
+                       'outcome_status':run['outcome_status'], 'tokens':token['value'],
+                       'responses':metric['tokens']['responses'], 'with_total':token['responses']})
+    total = sum(values) if values else None
+    if total is not None and total > MAX_COUNT:
+        total = None
+    live_rows = rows("json_extract(r.payload,'$.origin')='live'")
+    feedback = None
+    if live_rows:
+        run = project([live_rows[0]])[0]
+        events = [payload(row) for row in db.execute('SELECT * FROM events WHERE run_id=? ORDER BY position', (run['run_id'],))]
+        metric = run_metrics(run, events)
+        feedback = {'run':run, 'events':metric['event_count'], 'tools':metric['tools'],
+                    'model_responses':metric['llm']['completed'], 'with_total':metric['tokens']['total']['responses'],
+                    'outcomes':db.execute('SELECT COUNT(*) FROM outcomes WHERE run_id=?', (run['run_id'],)).fetchone()[0]}
+    result['summary'] = {'source':source, 'running':size(active), 'attention':size(ATTENTION_FILTER),
+                         'total_runs':size('1'), 'all_runs':db.execute('SELECT COUNT(*) FROM runs').fetchone()[0],
+                         'sample':{'limit':limit, 'count':len(sample), 'items':sample},
+                         'tokens':{'value':total, 'responses':responses, 'with_total':with_total, 'uncertain_events':uncertain},
+                         'feedback':feedback}
+    return result
