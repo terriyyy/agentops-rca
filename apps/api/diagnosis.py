@@ -63,6 +63,8 @@ def make_snapshot(db,run):
                         'kind':kind,'name':event['name'],'correlation_id':cid,'input':event['input'],
                         'output_text':event['output'],'ok':ok,'duration_ms':event['duration_ms'],
                         'error_signature':event['error_signature']})
+        if event.get('capture') is not None:
+            adapted[-1]['capture'] = event['capture']
     if active or not seen:raise HTTPException(409,'缺少完整工具调用返回，不能运行 HGT 定位')
     if len(seen)>500:raise HTTPException(409,'首版离线定位最多 500 个工具转换')
     return {'schema_version':'0.3','adapter_version':'agenttether-hgt-0.3.1','run_id':run['run_id'],'task_id':run['task_id'],

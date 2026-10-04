@@ -70,6 +70,7 @@ $env:AGENTOPS_DB = "$PWD/.local/e2e.sqlite3"
 
 ## 开发入口
 
+- [AgentTether 采集接入](docs/agenttether-capture-integration.md)：私有采集模块桥接、无模型自检、EnterpriseOps 可选接入与兼容性边界。
 - [团队开发交接](docs/team-development-handoff.md)：成员无权重开发、私有算法依赖分发、226服务器隔离联调、SSH转发及Git核查边界。
 - [第一版开发计划](docs/v1-development-plan.md)：范围、模块、页面、阶段和验收标准。
 - [V0.2 实时监控开发计划](docs/v0.2-development-plan.md)：接入边界、采集与传输、实时页面、开发顺序及验收清单。

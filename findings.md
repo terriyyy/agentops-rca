@@ -1,5 +1,19 @@
 # 方案审查发现
 
+## 2026-10-02：EnterpriseOps-Gym真实接入预检
+
+- 本次服务器平台使用专属环境/数据库，监控数据暂留服务器，不混入正式本机库。邮件容器采用network-none与本机回环代理，保留MCP上下文头；容器只运行模拟邮件数据库，没有外部邮件网络。
+- 同版本平台锁文件安装遇到镜像缺annotated-doc版本、官方源证书自签验证失败；不关闭TLS校验，尝试项目声明的requirements.in兼容范围，实际版本将独立冻结并在服务器验证，不改原环境或本机锁文件。
+- 适配使用显式LLM边界/Agent工具调度/VerifierEngine，保留原业务返回及反馈决策；取消原Agent隐式LLM重试、设20次模型调用上限及90秒单次超时。本次是有限兼容性测试，不能冒称复现原命令全部重试策略。
+
+- 服务器可通过既有SSH访问；用户给定的工作目录与另一套Python解释器均存在。实际使用给定解释器Python3.13.9，具备httpx/langchain_openai；工作目录自己的venv缺依赖，不能替换使用。
+- probe_iter2_case只有一个邮件MCP案例，5种可选工具、14项SQL检查（7个名字重复）。原executor按名字保存字典会折叠重复结果；适配层需保留实际逐项执行结果，不能伪造额外检查或以Agent自述验收。
+- localhost案例MCP服务未启动；现有email镜像可用，实际容器内部端口8005。选择创建专属回环端口的测试容器，不启动/覆盖旧实验容器或修改原案例。
+- 原executor内置反馈迭代，两次execute_single_run是真实尝试，可各建一个平台Run并保持task_id。原evaluate另有默认5次整例重试，测试限制为1次整例以避免错误重复付费。
+- 旧PROBE自动finish默认生成LLM RCA；本次通过其明确支持的AGENT_SRE_PATH=/nonexistent禁用旧监控，不启用平台RCA，仅采集Agent自身LLM/工具和已有检查。未加载外部收集器时原反馈只用检查失败信息。
+- 代理配置复用仓库.env中的base/model/key。该Agent的openai分支不接受自定义base；vllm分支实际是OpenAI兼容ChatOpenAI，支持自定义base，保留现有provider契约。密钥只进入0600私有运行配置。
+- 初次docker全量ps超时，images匹配过宽导致冗余输出；改为已确认email镜像的ancestor过滤后成功。无模型调用或原环境更改。
+
 ## 2026-10-02：团队交接核对
 
 - 本地可达历史3提交：权重/私有配置/数据库路径无命中，无>=10MiB对象；常见key/token/私钥模式无命中，URL凭据唯一命中为测试拒绝样例。未fetch、未审查远程可见性/其他分支附件，本结果不能保证GitHub全范围安全。.local/team-handoff-git-audit.json保留本地摘要，不含密钥。
@@ -261,3 +275,28 @@
 - 来源字段已有四类顶部状态、`kind`、`tool_status`、报告引用 event_id；可以在前端派生只用于样式的状态与 referenced row，无需新增 API 或改写事实。
 - 浏览器实测旧刻度与行内时间背景相差约 8.7px，根因是刻度位于滚动容器外，行内容受稳定滚动条预留宽度影响。已把刻度行移入轨迹滚动容器并设 sticky；专项浏览器断言两者左边缘差小于 1px。
 - 1366×768 与 1920×1080 截图核查：状态带使用克制的蓝/绿/红/紫/灰点；工具、LLM、日志、验证类型只在小图标底色区分。唯一可靠的工具区间显示有起点/长度的 bar，失败尾端红色终点；普通事件为点，缺时间不画轴点。
+
+### EnterpriseOps secure execution relocation
+服务器226的系统CA与certifi均无法验证外部HTTPS（模型与PyPI均为self-signed certificate）；未关闭校验或发送模型请求。删除服务器临时密钥文件。改为本机独立Agent环境运行原evaluate/Agent/SQL case源码副本，通过SSH本地转发连接226的network-none隔离email MCP；模型从本机安全HTTPS调用，平台采集到本机8000。服务器原代码与Agent环境保持不变。
+
+### EnterpriseOps-Gym real Agent acceptance completed
+成功Run 88254262789845c2aec716e0c65ccd7c / Task 32c053c274af46cab78f2edf36b9b41f：5次真实模型请求、9次工具调用/返回confirmed pair、14条SQL检查全通过、151事件证据全可解析、completed/passed/complete。SSE记录实际running期间1→151事件；浏览器运行中/完成截图无pageerror，工具筛选9行，选中Call/Return显示正常。早期桥接压缩头错误导致无工具的真实failed两轮，已保留并修复；此轮总模型请求7次，没有RCA/HGT。
+代码交付CaptureSession、显式EnterpriseOps串行接入和8项无模型回归；补充MCP/JSONRPC明确错误判定、未知状态保留、已知凭据repr日志脱敏、NO_PROXY回环绕过及工具发现前置检查。compileall通过。私有API证据及Git已跟踪/新代码检查均无模型Key。临时2容器/proxy/tunnel与本机/服务器LLM私有配置已清理；原服务器服务/环境、仓库.env和平台8000服务保留。详细命令、位置变化和限制见docs/enterpriseops-real-agent-acceptance.md；实测证明在.local/enterpriseops/且被Git忽略。226直接执行与其他Agent/并发/真正工具失败恢复仍pending。未提交或推送。
+
+### AgentTether采集审查：入口与模块
+本地9416/agent_tether版本0.4.0有两套入口：monitor→enable_auto_instrumentation较保守，AgentTetherSession→auto_instrument_all更广；ops/instrumentation含通用sync/async属性包装、LangChain Runnable、MCP call_tool、env、subprocess、HTTP、OpenAI/LiteLLM/Anthropic。live/observer提供kind/correlation/seq/attempt/round/step_idx/task/tools/context，emitter仅append JSONL，无平台outbox/ack/重传协议。Schema声明parent字段不代表实际已产生父子关系。monitor默认generate_report=True且finish(enable_llm_rca=True)，迁移需禁用诊断自动调用。后续核查具体异步/流式补丁、敏感信息与线程行为，不先承诺全覆盖。
+
+### AgentTether采集审查：兼容性与实测
+静态确认自动OpenAI class补丁只挂Completions.create，stream=True直接绕过；auto_instrument_all不调用LangChain/MCP通用包装。隔离抽取未修改上游函数，使用openai2.29/httpx0.28/langchain-openai1.1.11 + MockTransport（0真实请求）：sync OpenAI记录1，async/stream新增0；显式LangChain包装对当前ChatOpenAI.ainvoke也记录0（setattr失败被吞）；HTTPX Client.request包装的input_builder遗漏self，method记录为Client对象、url变成GET。证据.local/research/agenttether-capture-proof.json，未跑完整AgentTether宿主/真实模型，不能扩展为所有版本都不支持。observer的on_tool_return把ok=None且无sig转tool_failed信号；JSONL不统一脱敏/ack/outbox，Schema parent字段不会由主要call/return入口自动填入，on_llm_end仅结束记录的latency而非真实起止Span。当前核心未发现CPU/memory/network采样。
+
+### AgentTether采集迁移评估完成
+审查当前9416/0.4.0采集模块与服务器probe_enhance同名函数结构，补充docs/agenttether-collection-review.md。原函数隔离、真实SDK+MockTransport确认同步OpenAI1/异步0/流式0，LangChain ainvoke包装当前对象记录0，HTTPX输入method/url错位；0真实网络/费用。模块接口多于平台，但可靠采集交付与证据不能整体替换。推荐observer bridge+具体入口修正、保留outbox/API/SSE、禁用自动报告/RCA/干预；未改源码/后端/前端/真实样例或复制私有算法。完整行为/其他版本未实测，边界已列出。
+
+### 桥接实施边界
+实际私有模块为 source/agent_tether/ops/instrumentation.py；通用包装的取消误判与 Pydantic 实例 setattr 均需兼容层处理，源码不修改。模型仍为 llm 事件，工具有可靠关联才配对。
+OpenAI2.29 的 AsyncCompletions.create 公共方法有同步装饰层，异步判定需 inspect.unwrap；这是实际 SDK 测试才发现的兼容性问题。
+兼容审查补充：LiveEvent 新 capture=None 默认不能改变旧 0.2 encoded hash；ingest 对未提供元数据的事件移除该字段后哈希，新增回归核对旧 receipt hash 与重传幂等。
+桥接验证完成：真实SDK7项均成功，包括原EnterpriseOps LLMClient/AgentOrchestrator方法（生命周期/MCP为模拟，无真实case结论）；0f6d52fb7072419b8070393212e1a9b1为新增合成实机采集证明。Capture complete不等于框架全覆盖；旧Run不追补事件。采集来源SHA是3个ops文件，不是权重/全仓库SHA。
+
+### 新桥接真实验收
+新AgentTether桥接来源hash40d4490...真实两轮通过：第一10/14，反馈第二14/14。两轮均工具完整、SSErunning更新、Capture complete；独立检查与执行/诊断分离。第一次验收证明因现场另有一项offline_hgt作业而不能断言零作业，保留实际结果，不将其计为自动模型调用。226 TLS原地执行和逐token流式依旧未验证。

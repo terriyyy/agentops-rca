@@ -34,8 +34,9 @@ class LiveEvent(Strict):
     ok: bool | None = None
     duration_ms: float | None = Field(default=None, ge=0)
     error_signature: str | None = Field(default=None, max_length=1000)
+    capture: dict | None = None  # Optional provenance; legacy 0.2 events remain valid.
 
-    @field_validator('input','output')
+    @field_validator('input','output','capture')
     @classmethod
     def finite_json(cls,value):
         try: json.dumps(value,allow_nan=False)

@@ -12,12 +12,15 @@ LIMIT_BYTES = 32*1024*1024
 LIMIT_EVENTS = 19000  # Below the server's 20,000 event limit.
 SECRET_KEYS = re.compile(r'(?i)(password|passwd|secret|token|api[_-]?key|authorization|cookie)')
 TEXT_SECRET = re.compile(r'''(?ix)(\b(?:api[_-]?key|password|secret|token|authorization)\b\s*[=:]\s*["']?)(?:Bearer\s+)?([^\s,"'{}]+)|\bBearer\s+[A-Za-z0-9._~+/-]+|\bsk-[A-Za-z0-9_-]{12,}''')
+USAGE_COUNTS = {'input_tokens', 'output_tokens', 'total_tokens', 'prompt_tokens', 'completion_tokens', 'cached_tokens', 'reasoning_tokens'}
 
 
 def clean(value, depth=0):
     if depth>8: return '[DEPTH LIMIT]'
     if isinstance(value,dict):
-        result={str(k)[:200]: '[REDACTED]' if SECRET_KEYS.search(str(k)) else clean(v,depth+1) for k,v in list(value.items())[:50]}
+        # Only exact, nonnegative integer usage counters bypass the token-key
+        # rule. Strings, bools and arbitrary token containers remain secrets.
+        result={str(k)[:200]: v if str(k) in USAGE_COUNTS and type(v) is int and v>=0 else '[REDACTED]' if SECRET_KEYS.search(str(k)) else clean(v,depth+1) for k,v in list(value.items())[:50]}
         if len(value)>50:result['_agentops_truncated_fields']=len(value)-50
         return result
     if isinstance(value,(list,tuple)):

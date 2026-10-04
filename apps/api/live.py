@@ -104,7 +104,12 @@ def router(store):
             run=payload(db.execute('SELECT * FROM runs WHERE id=?',(run_id,)).fetchone())
             accepted=0
             for item in batch.events:
-                raw=item.model_dump(mode='json'); encoded=dumps(raw)
+                raw=item.model_dump(mode='json')
+                # Preserve the byte/hash contract of pre-bridge 0.2 receipts.
+                # A new optional default must not invalidate an old retry.
+                if raw.get('capture') is None:
+                    raw.pop('capture', None)
+                encoded=dumps(raw)
                 if len(encoded.encode('utf-8'))>65536: raise HTTPException(413,'单条事件超过 64 KiB')
                 hashed=digest(encoded)
                 previous=db.execute('SELECT * FROM live_receipts WHERE run_id=? AND (source_id=? OR (producer_id=? AND seq=?))',(run_id,item.event_id,item.producer_id,item.producer_seq)).fetchall()
@@ -121,6 +126,8 @@ def router(store):
                 db.execute('INSERT INTO evidence VALUES (?,?,?,?)',(evidence_id,run_id,artifact_id,dumps(evidence)))
                 normalized,_=normalize_events([(1,{'kind':item.kind,'name':item.name,'span_id':item.source_span_id,'parent_span_id':item.parent_source_id,'correlation_id':item.correlation_id,'ts':raw['occurred_at'],'input':item.input,'output_text':item.output,'ok':item.ok,'error_signature':item.error_signature,'duration_ms':item.duration_ms})],run_id,lambda:event_id,lambda *_:evidence_id)
                 event=normalized[0]
+                if item.capture is not None:
+                    event['capture'] = item.capture
                 event.update(position=run['event_count'],line=None,producer_id=item.producer_id,producer_seq=item.producer_seq,received_at=now())
                 db.execute('INSERT INTO events VALUES (?,?,?,?,?,?)',(event_id,run_id,event['position'],item.kind,item.name,dumps(event)))
                 db.execute('INSERT INTO live_receipts VALUES (?,?,?,?,?,?)',(run_id,item.event_id,item.producer_id,item.producer_seq,hashed,event_id))

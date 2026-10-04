@@ -1,5 +1,55 @@
 # AgentOps 方案审查计划
 
+## 当前验收：AgentTether 桥接真实案例复跑（2026-10-02）
+
+状态：complete。用户授权用仓库 API 重跑同一 Agent/case，在网页观察实时事件及实际独立验收。沿用 planning-with-files；不以旧 Run/合成记录代替新结果。
+
+- [x] R1：准备独立 network-none 邮箱容器、回环桥接/本地转发、工具发现预检；私有配置不输出密钥
+- [x] R2：新 output/receipt/spool，启用 AgentTether bridge；单 case/单并发/最多两次反馈及20模型请求上限
+- [x] R3：立即提供并打开真实新 Run，记录运行期间 SSE/工具事件和浏览器更新
+- [x] R4：核查实际 SQL 验收/调用配对/证据/完整性、记录结果；清理本次资源与临时凭据
+
+通过与否按真实检查；实时事件更新与 token 流式不同，本轮未增加 token 流采集。模型为 Agent 自身已获授权调用，不触发平台 HGT/RCA。
+
+
+## 当前开发：AgentTether observer 采集桥接（2026-10-02）
+
+状态：complete。详细计划 docs/agenttether-capture-development-plan.md；先规划后实现，私有采集模块运行时加载，不复制源码/权重。保留 Collector/outbox/证据/SSE，禁用自动报告/诊断/恢复。
+
+- [x] A1：隔离加载与 observer、关联/时间/取消/未知状态
+- [x] A2：明确目标包装、OpenAI sync/async、LangChain 代理与派生、MCP/HTTPX
+- [x] A3：可选来源元数据、token 用量脱敏、EnterpriseOps 选择接入
+- [x] A4：真实 SDK MockTransport 与 API/证据/重传/HGT 快照回归
+- [x] A5：交接文档、能力边界与隐私核查
+
+延期：完整 streaming 生命周期、Responses/其他模型框架、LLM 前端区间投影；真实案例桥接复验已完成，见 docs/agenttether-real-agent-replay.md；实施阶段先通过无付费模型验收。
+错误记录：恢复摘要给出的 instrumentation 路径少一层 agent_tether，已按实际目录定位；不存在的 tests/conftest.py、requirements.txt 未写入，后续用 rg 定位实际测试/依赖。
+
+
+## 当前任务：AgentTether采集能力与迁移评估（2026-10-02）
+
+状态：complete。本轮审查源码与兼容性，不直接替换Collector，不触发模型/诊断，不复制私有算法源码至公开仓库。
+
+- [x] C1：定位实际AgentTether/PROBE采集模块、版本及使用入口
+- [x] C2：核对采集信号/关联/时间/侵入性/持久化/安全默认值与边界
+- [x] C3：与现有Collector对比，给出可迁移模块、适配架构及验证要求
+
+
+交付docs/agenttether-collection-review.md。结论：模块覆盖更广但自动async/stream缺失，当前ChatOpenAI显式包装未生效，HTTPX参数映射有误；0网络函数级验证。推荐observer桥接复用、修正适配，保留Collector可靠交付及证据。未改产品或复制算法源码。
+
+## 当前任务：EnterpriseOps-Gym真实Agent现场监控验收（2026-10-02）
+
+状态：complete。用户授权运行服务器既有Agent及案例，使用本仓库已配置API。先核对源码/配置与执行资源，再用单案例、单并发、最多两次反馈迭代完成真实采集；不自动触发平台RCA，不覆盖既有实验结果，密钥与私有遥测不提交。
+
+- [x] E1：确认226访问、两套路径/环境、案例数量及LLM配置契约
+- [x] E2：实现或配置最小Agent接入，预检平台/会话/凭据脱敏及独立验收来源
+- [x] E3：执行真实案例，验证运行期间事件/SSE可见、工具/模型记录及最终状态
+- [x] E4：核查原始结果与平台证据/多轮关系，回归接入逻辑并交付可复现说明
+
+约束：Execution completed≠Task passed；Diagnosis≠Validation；工具关联按真实ID建立，不伪造模型/层级/时间；平台不执行上传命令。服务器命令由本次用户授权在终端运行，应用后端仍只接收记录。
+
+实际验收：本机原Agent源码副本 + 226隔离email MCP + 本机API/SSE。成功Run 88254262789845c2aec716e0c65ccd7c；5模型请求、9工具Span、14/14检查、151事件/证据、complete，首轮通过。含桥接修复前失败测试总计7模型请求。8项无模型回归通过。已清理临时资源/模型配置，保留平台记录和私有证明。226原环境直接执行仍待可信TLS恢复；未冒充已验证。交付docs/enterpriseops-real-agent-acceptance.md。
+
 ## 当前任务：团队协作与算法依赖交接（2026-10-02）
 
 状态：complete。核对Git忽略与本地历史，解释代码/私有算法/权重分发及服务器联调边界，交付docs/team-development-handoff.md。226部署仍待实机验证，本轮没有部署、分发权重/密钥、重置或提交已有UI工作区。

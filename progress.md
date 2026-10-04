@@ -1,5 +1,13 @@
 # 进度
 
+## 2026-10-02：真实EnterpriseOps-Gym接入开始
+
+用户授权在226运行现有evaluate.py案例、单并发/单次运行/最多2次反馈迭代，使用本仓库API；先检查现有代码与配置，不批量运行未知案例。恢复规划和SDK，确认Z盘仍映射到实验目录；密钥仅经受控运行配置提供，不在日志/源码/提交中打印。平台HGT/RCA不属于本次模型自动执行范围。
+
+预检完成：专属临时目录/输出，单案例配置；源LLM环境Python3.13，工作目录venv缺依赖。新增CaptureSession与显式EnterpriseOps适配，按真实尝试划分Run；模型API使用仓库配置，0600临时文件经SSH stdin提供。独立数据库检查逐项保留，聚合一次Outcome防止部分通过/失败造成虚假冲突。SDK/Session测试6通过，无模型请求。
+
+环境错误及处理：Docker全量ps超时，按email镜像筛选后成功；Docker桥接缺iptables，启动失败。包含host网络/反向SSH的组合操作被自动审批拒绝（仅提示blocked by policy），未执行；采取更隔离的方案，network-none专属容器+回环HTTP代理，平台将在服务器独立环境/库运行，再通过普通本地SSH转发查看。未修改共享网络/旧容器。原Agent解释器无pip，改为新建独立平台venv，不安装/覆盖原Agent依赖。真实运行尚未开始。
+
 ## 2026-10-02：团队交接版本提交准备
 
 用户明确授权提交并推送现有GitHub origin/main。已fetch origin，核对待提交范围为V0.4前端/测试/研究及交接文档共28文件；候选总量约461KB，无1MiB以上文件，常见密钥/token/私钥/含凭据URL模式无命中。权重、.env、诊断配置、数据库及截图未进入候选清单。沿用2026-09-30构建与18通过/2跳过验收结果，之后没有改产品实现；不重复模型调用或服务器部署。交接文档更新为发布版本说明，提交后以Git记录及远程HEAD核验结果为准。
@@ -210,3 +218,28 @@ W2/W3 已实现：新增 run-workspace.tsx/css 和 trace-model.ts，删除 RunPa
 保持页面结构，只在现有 RunWorkspace 添加四状态小色点、低饱和类型色、selected/failed/referenced/hover 层级和更明确的 Error 边界。`traceModel` 加动态 1/2/5 相对刻度；工具的唯一可信调用/返回区间显示起点和长度、失败尾端，普通事件仍为时间点。若只有来源 duration 或时间不可信，保留数值但不画推断区间。小于 1ms 的耗时不再显示为 0ms。
 
 首轮生产构建通过，浏览器专项首次 6/7：新测试的 tone-complete 匹配了“执行完成”和“采集完整”，改为分别定位状态格。浏览器测量刻度与时间行横向错开约 8.7px，原因是滚动条宽度只影响行；将刻度移入滚动容器并固定顶部，新增小于 1px 对齐断言。最终生产构建通过，Run Workspace 7/7 + 实时 CLI/SSE 2/2；1366×768 与 1920×1080 截图核查，无文档溢出。无后端、SSE 或付费模型调用改动。
+
+### EnterpriseOps secure execution relocation
+服务器226的系统CA与certifi均无法验证外部HTTPS（模型与PyPI均为self-signed certificate）；未关闭校验或发送模型请求。删除服务器临时密钥文件。改为本机独立Agent环境运行原evaluate/Agent/SQL case源码副本，通过SSH本地转发连接226的network-none隔离email MCP；模型从本机安全HTTPS调用，平台采集到本机8000。服务器原代码与Agent环境保持不变。
+
+### EnterpriseOps-Gym real Agent acceptance completed
+成功Run 88254262789845c2aec716e0c65ccd7c / Task 32c053c274af46cab78f2edf36b9b41f：5次真实模型请求、9次工具调用/返回confirmed pair、14条SQL检查全通过、151事件证据全可解析、completed/passed/complete。SSE记录实际running期间1→151事件；浏览器运行中/完成截图无pageerror，工具筛选9行，选中Call/Return显示正常。早期桥接压缩头错误导致无工具的真实failed两轮，已保留并修复；此轮总模型请求7次，没有RCA/HGT。
+代码交付CaptureSession、显式EnterpriseOps串行接入和8项无模型回归；补充MCP/JSONRPC明确错误判定、未知状态保留、已知凭据repr日志脱敏、NO_PROXY回环绕过及工具发现前置检查。compileall通过。私有API证据及Git已跟踪/新代码检查均无模型Key。临时2容器/proxy/tunnel与本机/服务器LLM私有配置已清理；原服务器服务/环境、仓库.env和平台8000服务保留。详细命令、位置变化和限制见docs/enterpriseops-real-agent-acceptance.md；实测证明在.local/enterpriseops/且被Git忽略。226直接执行与其他Agent/并发/真正工具失败恢复仍pending。未提交或推送。
+
+### AgentTether采集迁移评估完成
+审查当前9416/0.4.0采集模块与服务器probe_enhance同名函数结构，补充docs/agenttether-collection-review.md。原函数隔离、真实SDK+MockTransport确认同步OpenAI1/异步0/流式0，LangChain ainvoke包装当前对象记录0，HTTPX输入method/url错位；0真实网络/费用。模块接口多于平台，但可靠采集交付与证据不能整体替换。推荐observer bridge+具体入口修正、保留outbox/API/SSE、禁用自动报告/RCA/干预；未改源码/后端/前端/真实样例或复制私有算法。完整行为/其他版本未实测，边界已列出。
+
+### 2026-10-02 AgentTether 桥接开始
+规划已落盘 A1–A5；只加载私有采集包装，先验证实际异步路径与协议，不启用完整 Session。流式/其他框架明确延期，旧真实 Run 不作为新桥接证明。
+SDK 初测：协议/Collector 14通过；实际 SDK 3通过2失败，定位 AsyncOpenAI.create 经同步验证装饰器包装，inspect.iscoroutinefunction(public method) 为 false。改查 unwrap 原协程，防止把 coroutine 创建当作调用结束；修复后重验。
+实机服务已重启（无活跃诊断作业）；新的合成自检 Run 0f6d52fb7072419b8070393212e1a9b1 验证 completed/failed/complete、7事件、2配对和证据。只读核查脚本初次 Store 使用 str 而非 Path 报错，已修正；一次 PowerShell 内联 Python SQL 引号错误改用 here-string。未改数据库记录。
+A1–A5 完成：AgentTether 通用包装实际调用、平台 observer/脱敏/outbox、0.2 可选 capture 元数据、EnterpriseOps opt-in 桥接与无模型自检。后端全量72通过；最后补充旧 receipt hash 兼容用例后受影响协议专项17通过；真实SDK及原宿主边界MockTransport7通过。实机7事件2配对、全部证据解析、HGT快照排除验收、零诊断。compileall/diff与Git候选凭据扫描通过。当前8000已加载最后兼容修正。交付 docs/agenttether-capture-integration.md。源码/权重未纳入Git，无付费调用；新桥接真实付费案例复验、流式/其他框架/模型区间UI延期。未提交或推送。
+
+### 桥接真实复跑开始
+用户授权同案例真实复跑；恢复旧拓扑及私有材料，平台8000正常，临时18003服务不存在；按新独立资源重建，单case预算限制，立即暴露实时Run。
+
+R1资源：新增network-none容器agentops-tether-replay-20261002（54aa12a7...），226回环代理PID3959844，本地SSH转发PID56024；不修改旧容器/原Agent环境。私有模型配置本机生成，MCP上下文不再输出。
+
+R1/R2完成：原MCPClient握手与79工具发现成功，5所选工具均存在，预检0模型请求。新Agent PID62016，真实Run7af4add942c044849cef8bc07ad8e6d2已running/模型调用1；SSE observer与浏览器旁路监听启动，并提供实时链接。使用新AgentTether来源hash，不追加旧记录。
+
+R3/R4完成：真实反馈两轮，第一7af4add...10/14失败、第二25306a...14/14通过；5+7=12模型请求，7+10组工具配对、138+170事件，均complete/0丢失。308事件证据API解析通过，哈希与来源核对、密钥未入原件。SSE两轮running增长、4张浏览器阶段截图无pageerror。第一轮现场另有offline_hgt succeeded，未在旁路记录归因；首次证明断言零诊断作业因此失败，已按事实区分，无analyst_rca作业。专属容器/代理/SSH与临时模型配置清理，平台服务和记录保留。命令检索早期PowerShell通配路径rg失败已改为明确路径；服务器image过滤过宽已定位准确image。交付docs/agenttether-real-agent-replay.md；本轮未改产品或推送。
