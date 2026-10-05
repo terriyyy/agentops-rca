@@ -9,6 +9,7 @@ export function useRunAnalysis(run:Run) {
   const [caps,setCaps]=useState<Capabilities|null>(null),[jobs,setJobs]=useState<Job[]>([]);
   const [pollError,setPollError]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [preview,setPreview]=useState<Preview|null>(null),[revision,setRevision]=useState(0),[selectedId,setSelectedId]=useState<string|null>(null);
+  useEffect(()=>{if(preview?.config_revision&&caps&&preview.config_revision!==caps.config_revision){setPreview(null);analystRequestId.current=null;setError('模型连接已更改，请重新预览发送内容。');}},[caps?.config_revision,preview?.config_revision]);
   const alive=useRef(true),locked=useRef(false),requestId=useRef<string|null>(null),analystRequestId=useRef<string|null>(null);
   const projection=JSON.stringify(run.insight?.diagnosis||{});
   useEffect(()=>{

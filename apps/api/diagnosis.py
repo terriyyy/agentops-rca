@@ -5,14 +5,14 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from .importer import uid,digest
 from .storage import dumps,payload
-from .analyst_context import build_prompt
+from .analyst_context import build_prompt,request_body
+from .model_settings import ModelSettings
 
 ROOT=Path(__file__).resolve().parents[2]
 CONFIG=ROOT/'.local/diagnosis-config.json'
@@ -73,8 +73,9 @@ def make_snapshot(db,run):
 
 
 class DiagnosisManager:
-    def __init__(self,store,config_path=CONFIG,timeout=120):
+    def __init__(self,store,config_path=CONFIG,timeout=120,models=None):
         self.store=store;self.config_path=Path(config_path);self.timeout=timeout
+        self.models=models or ModelSettings(store.path.parent/'rca-credentials'/store.path.stem)
         self.lock=threading.Lock();self.processes={};self.threads=[];self.closed=False
 
     def recover(self):
@@ -95,41 +96,28 @@ class DiagnosisManager:
         except (OSError,ValueError,KeyError,AssertionError):return None
 
     def analyst_config(self):
-        try:
-            values={}
-            key_configured=False
-            with (ROOT/'.env').open(encoding='utf-8') as config_file:
-                for line in config_file:
-                    if '=' not in line or line.lstrip().startswith('#'):continue
-                    key,value=line.split('=',1)
-                    name=key.strip()
-                    if name=='OPS_OPENAI_API_KEY':
-                        key_configured=bool(value.strip().strip('"').strip("'"))
-                    elif name in ('OPS_OPENAI_API_BASE_URL','OPS_OPENAI_MODEL'):
-                        values[name]=value.strip().strip('"').strip("'")
-            base=values.get('OPS_OPENAI_API_BASE_URL','').rstrip('/')
-            url=urlparse(base)
-            if url.scheme!='https' or url.netloc!='api.chatanywhere.tech' or url.path!='/v1':return None
-            if not key_configured or not values.get('OPS_OPENAI_MODEL'):return None
-            return {'model':values['OPS_OPENAI_MODEL'],'provider':'api.chatanywhere.tech','env_file':str(ROOT/'.env')}
-        except OSError:return None
+        try:record=self.models.read()
+        except HTTPException:return None
+        if not record or not record.get('enabled'):return None
+        return {k:record[k] for k in ('name','base_url','model','revision','source','token_parameter')}|{'provider':record['name']}
 
     def capabilities(self):
         config=self.config()
-        if not config:return {'status':'unavailable','hgt':'unavailable','analyst':'unconfigured','reason':'尚未配置隔离诊断环境'}
         # A recorded probe is valid only for this exact configuration.
-        probe=config.get('probe',{})
-        current=digest(dumps({k:v for k,v in config.items() if k!='probe'}))
+        probe=(config or {}).get('probe',{})
+        current=digest(dumps({k:v for k,v in (config or {}).items() if k!='probe'}))
         valid=probe.get('config_hash')==current and probe.get('hgt')=='ready'
         analyst=self.analyst_config()
         last=None
         with self.store.connect() as db:
-            row=db.execute("SELECT payload FROM diagnosis_jobs WHERE json_extract(payload,'$.mode')='analyst_rca' ORDER BY created_at DESC LIMIT 1").fetchone()
+            row=db.execute("SELECT payload FROM diagnosis_jobs WHERE json_extract(payload,'$.mode')='analyst_rca' AND json_extract(payload,'$.config_revision')=? ORDER BY created_at DESC LIMIT 1",(analyst['revision'] if analyst else '',)).fetchone()
             if row:last=payload(row)
         analyst_state='unconfigured' if not analyst else 'last_call_succeeded' if last and last['state']=='succeeded' else 'last_call_failed' if last and last['state'] in ('failed','timed_out') else 'configured'
         return {'status':'ready' if valid and analyst_state=='last_call_succeeded' else 'degraded' if valid else 'unavailable',
-                'hgt':'ready' if valid else 'unverified','analyst':analyst_state,'model':analyst['model'] if analyst else None,
-                'reason':'HGT 可用；analyst 已配置，需手动发起 RCA' if valid and analyst else 'HGT 离线定位可用；analyst 未配置' if valid else '模型尚未通过独立加载检查',
+                'hgt':'ready' if valid else 'unverified' if config else 'unavailable','analyst':analyst_state,'model':analyst['model'] if analyst else None,
+                'provider':analyst['provider'] if analyst else None,'base_url':analyst['base_url'] if analyst else None,
+                'config_revision':analyst['revision'] if analyst else None,'config_source':analyst['source'] if analyst else None,
+                'reason':'本机定位可用；模型配置与调用状态独立显示' if valid else '定位环境尚未配置' if not config else '定位模型尚未通过独立加载检查',
                 'provenance':probe.get('provenance') if valid else None}
 
     def analyst_material(self,db,run_id):
@@ -139,7 +127,7 @@ class DiagnosisManager:
         config=self.config()
         if not config or self.capabilities()['hgt']!='ready':raise HTTPException(409,'HGT 尚未就绪')
         analyst=self.analyst_config()
-        if not analyst:raise HTTPException(409,'analyst 凭据或服务地址尚未配置')
+        if not analyst:raise HTTPException(409,'原因分析模型尚未配置，请前往模型连接设置')
         for record in db.execute('SELECT * FROM diagnoses WHERE run_id=? ORDER BY rowid DESC',(run_id,)):
             report=payload(record)
             if report.get('format')!='agenttether-hgt' or report.get('origin')!='recomputed' or report.get('input_snapshot_hash')!=snapshot_hash:continue
@@ -153,19 +141,31 @@ class DiagnosisManager:
             if not raw.get('selected_units'):continue
             try:context=build_prompt(snapshot,raw)
             except ValueError as exc:raise HTTPException(409,str(exc)) from exc
+            credentials=self.models.read()
+            if credentials and credentials.get('enabled'):
+                # Also redact this connection's exact key, even for nonstandard key formats.
+                encoded=dumps(context['prompt']).replace(dumps(credentials['api_key'])[1:-1],'[REDACTED]')
+                context.update(prompt=json.loads(encoded),prompt_sha256=digest(encoded),prompt_bytes=len(encoded.encode('utf-8')))
+            try:body=request_body(config,context,analyst)
+            except (OSError,ValueError,KeyError,SyntaxError):raise HTTPException(409,'分析环境的发送指令无法读取或内容过大，请检查定位环境配置') from None
+            context['prompt_sha256']=digest(dumps(body))
+            context['prompt_bytes']=len(dumps(body).encode('utf-8'))
             hgt_hash=artifact['sha256']
             preview_hash=digest(dumps({'prompt_sha256':context['prompt_sha256'],'hgt_sha256':hgt_hash,
-                                       'hgt_diagnosis_id':report['diagnosis_id'],'model':analyst['model']}))
-            return {'mode':'analyst_rca','prompt':context['prompt'],'prompt_sha256':context['prompt_sha256'],'preview_sha256':preview_hash,
+                                       'hgt_diagnosis_id':report['diagnosis_id'],'model':analyst['model'],
+                                       'provider':analyst['provider'],'base_url':analyst['base_url'],
+                                       'config_revision':analyst['revision'],'token_parameter':analyst['token_parameter']}))
+            return {'mode':'analyst_rca','prompt':context['prompt'],'request':body,'prompt_sha256':context['prompt_sha256'],'preview_sha256':preview_hash,
                     'prompt_bytes':context['prompt_bytes'],'candidate_ids':context['candidate_ids'],
                     'evidence_map':context['evidence_map'],'truncated':context['truncated'],
                     'input_snapshot_hash':snapshot_hash,'input_evidence_id':report['input_evidence_id'],
                     'hgt_diagnosis_id':report['diagnosis_id'],'hgt_sha256':hgt_hash,
-                    'model':analyst['model'],'provider':analyst['provider'],'run_id':run_id}
+                    'model':analyst['model'],'provider':analyst['provider'],'base_url':analyst['base_url'],
+                    'config_revision':analyst['revision'],'token_parameter':analyst['token_parameter'],'run_id':run_id}
         raise HTTPException(409,'请先用当前版本重新运行 HGT 定位，生成同快照的候选证据')
 
     def preview_analyst(self,run_id):
-        with self.store.connect() as db:return self.analyst_material(db,run_id)
+        with self.models.lock,self.store.connect() as db:return self.analyst_material(db,run_id)
 
     def create_analyst(self,run_id,spec):
         with self.lock:
@@ -179,7 +179,7 @@ class DiagnosisManager:
                 if material['preview_sha256']!=spec.preview_sha256 or material['hgt_diagnosis_id']!=spec.hgt_diagnosis_id:
                     raise HTTPException(409,'发送预览已变化，请重新查看后再运行')
                 jid=uid();now=utcnow()
-                prompt_text=dumps(material['prompt']);prompt_artifact=uid();prompt_ref=uid()
+                prompt_text=dumps(material['request']);prompt_artifact=uid();prompt_ref=uid()
                 db.execute('INSERT INTO artifacts VALUES (?,?,?,?,?,?)',(prompt_artifact,run_id,'analyst-prompt-'+jid+'.json','analyst_prompt',digest(prompt_text),prompt_text))
                 ref={'evidence_id':prompt_ref,'run_id':run_id,'artifact_id':prompt_artifact,'filename':'analyst-prompt-'+jid+'.json',
                      'line':None,'json_pointer':'','event_id':None,'resolution_status':'resolved','original_reference':None}
@@ -189,10 +189,14 @@ class DiagnosisManager:
                      'input_snapshot_hash':material['input_snapshot_hash'],'input_evidence_id':material['input_evidence_id'],
                      'hgt_diagnosis_id':material['hgt_diagnosis_id'],'hgt_sha256':material['hgt_sha256'],
                      'prompt_sha256':material['prompt_sha256'],'prompt_evidence_id':prompt_ref,
-                     'preview_sha256':material['preview_sha256'],'model':material['model']}
+                     'preview_sha256':material['preview_sha256'],'model':material['model'],
+                     'provider':material['provider'],'base_url':material['base_url'],'config_revision':material['config_revision']}
                 db.execute('INSERT INTO diagnosis_jobs VALUES (?,?,?,?,?,?)',(jid,run_id,spec.request_id,'queued',now,dumps(job)))
             config=self.config()
-            thread=threading.Thread(target=self.run,args=(jid,material,config),daemon=True)
+            credentials=self.models.read()
+            if not credentials or credentials.get('revision')!=material['config_revision']:
+                self.set_terminal(jid,'failed','模型配置已变化，请重新预览');raise HTTPException(409,'发送预览已变化，请重新查看后再运行')
+            thread=threading.Thread(target=self.run,args=(jid,material,config,credentials['api_key']),daemon=True)
             self.threads=[t for t in self.threads if t.is_alive()];self.threads.append(thread);thread.start()
             return job
 
@@ -237,7 +241,7 @@ class DiagnosisManager:
             if process and process.poll() is None:process.terminate()
             return job
 
-    def run(self,jid,snapshot,config):
+    def run(self,jid,snapshot,config,credential=None):
         directory=self.store.path.parent/'diagnosis-jobs'/jid
         process=None
         try:
@@ -254,11 +258,13 @@ class DiagnosisManager:
                         if job['state']!='queued':return
                         job['state']='running';self.save(db,job)
                     analyst=job.get('mode')=='analyst_rca'
-                    if analyst:env['AGENT_SRE_ENV_FILE']=str(ROOT/'.env')
                     script='analyst_worker.py' if analyst else 'diagnosis_worker.py'
-                    process=subprocess.Popen([config['python'],str(ROOT/'apps/api'/script),'--config',str(directory/'config.json'),'--input',str(directory/'input.json'),'--output',str(directory/'output.json')],env=env,cwd=directory,stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+                    process=subprocess.Popen([config['python'],str(ROOT/'apps/api'/script),'--config',str(directory/'config.json'),'--input',str(directory/'input.json'),'--output',str(directory/'output.json')],env=env,cwd=directory,stdin=subprocess.PIPE if analyst else subprocess.DEVNULL,stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
                     self.processes[jid]=process
-                try:process.wait(timeout=self.timeout)
+                try:
+                    if analyst:
+                        process.communicate(input=dumps({'api_key':credential}).encode('utf-8'),timeout=self.timeout)
+                    else:process.wait(timeout=self.timeout)
                 except subprocess.TimeoutExpired:
                     process.kill();process.wait();self.set_terminal(jid,'timed_out','诊断超过时间限制');return
             output=directory/'output.json'
@@ -272,6 +278,9 @@ class DiagnosisManager:
                 self.set_terminal(jid,'failed',reason);return
             if output.stat().st_size>16*1024*1024:raise ValueError('report_size')
             result=json.loads(output.read_text(encoding='utf-8'))
+            if credential:
+                # Do not retain an unexpected provider echo of the key in reports.
+                result=json.loads(dumps(result).replace(dumps(credential)[1:-1],'[REDACTED]'))
             if snapshot.get('mode')=='analyst_rca':self.persist_analyst(jid,snapshot,result)
             else:self.persist(jid,snapshot,result)
         except Exception:

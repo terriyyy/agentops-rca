@@ -3,6 +3,7 @@ import {Link} from 'react-router-dom';
 import {Activity,AlertCircle,ArrowUpRight,Check,ChevronRight,Copy,Layers3,Terminal,X} from 'lucide-react';
 import {executionNames,outcomeNames,type HomeSource,type HomeSummary,type Run} from './api';
 import {usageNumber} from './run-usage';
+import {SegmentedControl} from './run-controls';
 import './home-overview.css';
 
 export const homeSources:Record<HomeSource,string>={live:'真实实时',imported:'真实历史',synthetic:'合成演示',all:'全部来源'};
@@ -54,10 +55,14 @@ export function CaptureFeedback({summary,renderSource,onStart}:{summary:HomeSumm
 
 export function MonitorStart({close,demo,busy,error}:{close:()=>void;demo:()=>void;busy:boolean;error:string}) {
   const [mode,setMode]=useState<'agent'|'example'>('agent'),[copied,setCopied]=useState(false),[copyError,setCopyError]=useState('');
+  const copyVersion=useRef(0);
   const command=mode==='agent'?'.\\.venv\\Scripts\\agentops.exe run --goal "任务目标" -- .\\.venv\\Scripts\\python.exe your_agent.py':'.\\.venv\\Scripts\\agentops.exe run --sample-kind synthetic --goal "本地加法任务" -- .\\.venv\\Scripts\\python.exe examples/local_agent.py --delay 4 --fail';
-  async function copy(){try{await navigator.clipboard.writeText(command);setCopied(true);setCopyError('');}catch{setCopyError('复制失败，可直接选中命令复制。');}}
-  return <HomeDialog title="开始监控" close={close}><div className="monitor-modes" role="group" aria-label="接入方式"><button aria-pressed={mode==='agent'} onClick={()=>{setMode('agent');setCopied(false);}}>已有 Python Agent</button><button aria-pressed={mode==='example'} onClick={()=>{setMode('example');setCopied(false);}}>无模型演示</button></div>
+  async function copy(){const version=copyVersion.current;try{await navigator.clipboard.writeText(command);if(version===copyVersion.current){setCopied(true);setCopyError('');}}catch{if(version===copyVersion.current)setCopyError('复制失败，可直接选中命令复制。');}}
+  useEffect(()=>{copyVersion.current++;setCopied(false);setCopyError('');return()=>{copyVersion.current++;};},[mode]);
+  useEffect(()=>{if(!copied)return;const timer=setTimeout(()=>setCopied(false),2500);return()=>clearTimeout(timer);},[copied]);
+  return <HomeDialog title="开始监控" close={close}><div className="monitor-intro"><Terminal size={24}/><div><strong>从终端启动，在这里观察</strong><p>复制命令不会执行 Agent；数据到达后才会显示接入结果。</p></div></div><div className="monitor-modes"><SegmentedControl label="接入方式" value={mode} options={[{value:'agent',label:'已有 Python Agent'},{value:'example',label:'无模型演示'}]} onChange={setMode}/></div>
     <ol className="monitor-steps"><li><strong>保留平台服务，打开另一个终端</strong><span>进入项目根目录，使用已安装本项目命令行工具的 Python 环境。</span></li><li><strong>{mode==='agent'?'替换入口和任务目标，执行命令':'执行本地示例，观察事件与失败检查'}</strong><div className="monitor-command"><code>{command}</code><button onClick={copy}><Copy size={14}/>{copied?'已复制':'复制命令'}</button></div></li><li><strong>打开终端返回的 Run 链接</strong><span>网页持续显示已采集的步骤；首页接入反馈可核对已收到的数据。</span></li></ol>
+    {copied&&<p className="monitor-copy-status" role="status">命令已复制；请在另一个终端运行。</p>}
     {mode==='agent'?<div className="monitor-coverage"><strong>这条命令能采集什么？</strong><dl><dt>进程与日志</dt><dd>CLI 启动并记录退出状态、stdout / stderr。</dd><dt>工具调用</dt><dd>Python 工具接入 <code>@tool</code> 或已有适配器后才有调用与返回。</dd><dt>模型与用量</dt><dd>需要对应模型／框架适配；服务未提供 usage 时不显示 Token 总量。</dd><dt>任务检查</dt><dd>测试／规则通过 <code>verification</code> 上报；退出码 0 不等于任务通过。</dd></dl><details><summary>查看最小 Python 工具接入示例</summary><pre>{'from agentops_cli import tool, verification\n\n@tool\ndef add(a, b):\n    return a + b\n\nresult = add(2, 3)\nverification("passed" if result == 5 else "failed", source="python-assertion",\n             basis="add(2, 3) == 5")'}</pre></details></div>:<p className="monitor-example-note">示例不调用模型，明确标为合成演示。<code>--fail</code> 演示进程正常退出、任务检查未通过。</p>}
     {(error||copyError)&&<p className="home-start-error" role="alert">{error||copyError}</p>}
     <div className="monitor-footer"><button className="text-button" onClick={demo} disabled={busy}>{busy?'正在载入…':'直接载入历史演示'}</button><Link to="/imports">导入历史记录<ArrowUpRight size={14}/></Link><Link to="/system">检查运行环境<ArrowUpRight size={14}/></Link></div>

@@ -1,5 +1,7 @@
 """Build a bounded, previewable analyst request from a persisted HGT result."""
 import re
+import ast
+from pathlib import Path
 
 from .importer import digest
 from .storage import dumps
@@ -7,6 +9,22 @@ from .storage import dumps
 MAX_PROMPT_BYTES=24_000
 SECRET=re.compile(r'(?i)(?:bearer\s+\S+|sk-[A-Za-z0-9_-]{12,})')
 SECRET_FIELD=re.compile(r'''(?ix)(["']?(?:api[_-]?key|access[_-]?token|token|password|secret|authorization)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,}]+)''')
+
+
+def request_body(config,context,connection):
+    """Read the upstream instruction as data, without importing/executing algorithm code."""
+    source=Path(config['source'])/'agent_tether/recovery/llm_analyst.py'
+    if source.stat().st_size>128*1024:raise ValueError('analyst_instruction_unavailable')
+    tree=ast.parse(source.read_text(encoding='utf-8'))
+    instruction=None
+    for node in tree.body:
+        if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='_SYSTEM_PROMPT' for target in node.targets):
+            instruction=ast.literal_eval(node.value);break
+    if not isinstance(instruction,str):raise ValueError('analyst_instruction_unavailable')
+    body={'model':connection['model'],'messages':[{'role':'system','content':instruction},
+         {'role':'user','content':dumps(context['prompt'])}],connection['token_parameter']:2500}
+    if len(dumps(body).encode('utf-8'))>32_000:raise ValueError('analyst_prompt_too_large')
+    return body
 
 
 def clipped(value,limit):

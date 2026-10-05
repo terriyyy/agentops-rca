@@ -11,6 +11,7 @@ from apps.api.diagnosis import DiagnosisManager,make_snapshot
 from apps.api.analyst_context import build_prompt,clipped
 from apps.api.storage import dumps,payload
 from apps.api.importer import uid,digest
+from apps.api.model_settings import ConnectionRequest
 from tests.integration.test_live import create,event,send,finish
 
 
@@ -18,10 +19,14 @@ from tests.integration.test_live import create,event,send,finish
 def scenario(tmp_path,monkeypatch):
     with TestClient(create_app(tmp_path/'analyst.sqlite3',diagnosis_config=tmp_path/'absent.json')) as client:
         manager=client.app.state.diagnosis
-        config={'python':sys.executable,'source_sha256':'s','weight_sha256':'w','manifest_sha256':'m'}
+        source=tmp_path/'fixture-source/agent_tether/recovery'
+        source.mkdir(parents=True)
+        (source/'llm_analyst.py').write_text('_SYSTEM_PROMPT = "Fixture system instruction"',encoding='utf-8')
+        config={'python':sys.executable,'source':str(tmp_path/'fixture-source'),'source_sha256':'s','weight_sha256':'w','manifest_sha256':'m'}
         monkeypatch.setattr(manager,'config',lambda:config)
         monkeypatch.setattr(manager,'capabilities',lambda:{'hgt':'ready','analyst':'configured'})
-        monkeypatch.setattr(manager,'analyst_config',lambda:{'model':'gpt-5.6-luna','provider':'api.chatanywhere.tech','env_file':'fixture'})
+        manager.models.save(ConnectionRequest(name='api.chatanywhere.tech',base_url='https://api.chatanywhere.tech/v1',
+                                              model='gpt-5.6-luna',api_key='dummy-key',expected_revision=None))
         monkeypatch.setattr(manager,'run',lambda *args:None)
         run,headers,_=create(client)
         records=[event(input={'command':'pytest','password':'should-not-leak'}),event(2,kind='tool_return',ok=False,output={'returncode':1,'stderr':'AssertionError'})]
@@ -112,10 +117,16 @@ def test_provider_failure_is_bounded_and_does_not_publish(scenario,monkeypatch):
         def __init__(self,args,env,**kwargs):
             assert args[1].endswith('analyst_worker.py')
             assert 'OPS_OPENAI_API_KEY' not in env
+            assert 'dummy-key' not in dumps(args) and 'dummy-key' not in dumps(env)
             from pathlib import Path
+            for name in ('config','input'):
+                assert 'dummy-key' not in Path(args[args.index('--'+name)+1]).read_text(encoding='utf-8')
             Path(args[args.index('--output')+1]).write_text('{"error":"provider_http_401"}',encoding='utf-8')
         def poll(self):return 1
         def wait(self,timeout=None):return 1
+        def communicate(self,input,timeout=None):
+            assert b'dummy-key' in input
+            return None,None
     monkeypatch.setattr('apps.api.diagnosis.subprocess.Popen',FailureProcess)
     monkeypatch.setattr(manager,'run',DiagnosisManager.run.__get__(manager))
     response=client.post('/api/runs/'+rid+'/analyst-jobs',json={'request_id':uuid4().hex,

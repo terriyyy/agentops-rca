@@ -18,6 +18,7 @@ from .normalizer import object_json
 from .storage import Store, payload
 from .live import router as live_router, live_view
 from .diagnosis import DiagnosisManager, router as diagnosis_router
+from .model_settings import ModelSettings, router as model_settings_router
 from .workbench import overview as workbench_overview, projected_run
 from .run_metrics import run_metrics
 
@@ -31,7 +32,7 @@ class LocalRequestGuard:
     async def __call__(self,scope,receive,send):
         if scope['type']!='http': return await self.app(scope,receive,send)
         headers=dict(scope['headers'])
-        if scope['method']=='POST':
+        if scope['method'] in ('POST','PUT','PATCH','DELETE'):
             origin=headers.get(b'origin',b'').decode()
             allowed_origins={'http://'+headers.get(b'host',b'').decode(),'http://127.0.0.1:5173','http://localhost:5173'}
             if origin and origin not in allowed_origins:
@@ -58,9 +59,14 @@ class LocalRequestGuard:
         return await self.app(scope,receive,send)
 
 
-def create_app(db_path=None, diagnosis_config=None):
+def create_app(db_path=None, diagnosis_config=None, model_settings_dir=None, legacy_env_file=None):
     store=Store(Path(db_path or os.environ.get('AGENTOPS_DB',ROOT/'data/agentops.sqlite3')))
-    manager=DiagnosisManager(store, **({'config_path':diagnosis_config} if diagnosis_config else {}))
+    isolated=bool(db_path or os.environ.get('AGENTOPS_DB'))
+    models=ModelSettings(model_settings_dir or os.environ.get('AGENTOPS_MODEL_SETTINGS_DIR') or
+                         (store.path.parent/'rca-credentials'/store.path.stem if isolated else ROOT/'.local/rca-credentials'),
+                         legacy_env_file or (None if isolated else ROOT/'.env'))
+    isolated_diagnosis=diagnosis_config or os.environ.get('AGENTOPS_DIAGNOSIS_CONFIG') or (store.path.parent/('diagnosis-config-'+store.path.stem+'.json') if isolated else None)
+    manager=DiagnosisManager(store, models=models, **({'config_path':isolated_diagnosis} if isolated_diagnosis else {}))
     @asynccontextmanager
     async def lifespan(app):
         manager.recover()
@@ -73,6 +79,7 @@ def create_app(db_path=None, diagnosis_config=None):
     app.add_middleware(TrustedHostMiddleware,allowed_hosts=['127.0.0.1','localhost','testserver'])
     app.include_router(live_router(store))
     app.include_router(diagnosis_router(manager))
+    app.include_router(model_settings_router(manager))
 
     @app.exception_handler(HTTPException)
     async def http_error(request,exc): return JSONResponse({'detail':exc.detail},exc.status_code)

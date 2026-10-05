@@ -10,7 +10,7 @@ function Stamp({run}:{run:Run}) {
   const date=new Date(run.created_at);
   return <time dateTime={run.created_at} title={run.created_at}>{Number.isNaN(date.getTime())?'入库时间未知':date.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})}</time>;
 }
-function Fact({kind,run}:{kind:'execution'|'outcome'|'diagnosis';run:Run}) {
+export function Fact({kind,run}:{kind:'execution'|'outcome'|'diagnosis';run:Run}) {
   const diagnosis=run.insight?.diagnosis,state=diagnosis?.state||'none';
   const names:Record<string,string>={none:'尚未分析',running:'分析进行中',hypothesis:'待验证假设',localization:'已有定位线索',historical:'附带历史报告',failed:'分析作业失败'};
   const value=kind==='execution'?executionNames[run.execution_status]||'执行状态未知':kind==='outcome'?outcomeNames[run.outcome_status]||'验收未知':names[state]||'诊断状态未知';

@@ -1,4 +1,4 @@
-"""Single-request AgentTether analyst worker. Reads the key only from ignored .env."""
+"""Single-request AgentTether analyst worker. Credentials arrive only through stdin."""
 import argparse
 import hashlib
 import json
@@ -14,10 +14,10 @@ def canonical(value):
     return json.dumps(value,ensure_ascii=False,separators=(',',':'),allow_nan=False)
 
 
-def execute(config,material):
+def execute(config,material,credentials):
     source=Path(config['source'])
     if source_hash(source)!=config['source_sha256']:raise ValueError('source_hash_mismatch')
-    encoded=canonical(material['prompt'])
+    encoded=canonical(material.get('request',material['prompt']))
     if hashlib.sha256(encoded.encode('utf-8')).hexdigest()!=material['prompt_sha256']:
         raise ValueError('prompt_mismatch')
     for name in ('agent_tether','agent_tether.recovery','agent_tether.enrichers'):
@@ -28,10 +28,22 @@ def execute(config,material):
     import requests
 
     class BoundedAnalyst(LLMRecoveryAnalyst):
+        def __init__(self):
+            # Do not invoke upstream env_llm_cfg: explicit connection only, no .env fallback.
+            self.api_key=credentials.get('api_key')
+            self.model=material['model'];self.base_url=material['base_url']
+            self.timeout_s=45;self.max_transitions=12;self.temperature=0
         def _payload(self,**kwargs):return material['prompt']
         def _chat(self,messages):
-            if self.base_url.rstrip('/')!='https://api.chatanywhere.tech/v1':raise RuntimeError('provider_error')
-            body={'model':self.model,'messages':messages,'max_tokens':2500}
+            from urllib.parse import urlsplit
+            url=urlsplit(self.base_url)
+            if url.scheme!='https' and not (url.scheme=='http' and url.hostname in ('localhost','127.0.0.1','::1')):
+                raise RuntimeError('provider_error')
+            if url.username or url.password or url.query or url.fragment:raise RuntimeError('provider_error')
+            parameter=material.get('token_parameter','max_tokens')
+            if parameter not in ('max_tokens','max_completion_tokens'):raise RuntimeError('provider_error')
+            body=material.get('request') or {'model':self.model,'messages':messages,parameter:2500}
+            if body.get('model')!=self.model or body.get(parameter)!=2500:raise RuntimeError('provider_error')
             try:
                 response=requests.post(self.base_url.rstrip('/')+'/chat/completions',
                                        headers={'Authorization':'Bearer '+self.api_key,'Content-Type':'application/json'},
@@ -48,7 +60,7 @@ def execute(config,material):
                 return content
             except (ValueError,KeyError,IndexError,TypeError) as exc:raise RuntimeError('invalid_model_output') from exc
 
-    analyst=BoundedAnalyst(model=material['model'],base_url='https://api.chatanywhere.tech/v1',timeout_s=45,max_transitions=12)
+    analyst=BoundedAnalyst()
     if not analyst.available:raise ValueError('analyst_unconfigured')
     candidates=material['prompt']['selected_subtrajectory']
     units=[TransitionUnit(transition_id=c['transition_id'],index=i+1,span_ids=c['event_ids'],tool=c['tool'],status=c['status'],
@@ -79,7 +91,9 @@ def execute(config,material):
             'provenance':{'source_sha256':config['source_sha256'],'weight_sha256':config['weight_sha256'],
                           'manifest_sha256':config['manifest_sha256'],'hgt_sha256':material['hgt_sha256'],
                           'model_requested':material['model'],'model_returned':analyst.returned_model,
-                          'provider':'api.chatanywhere.tech','adapter_version':'agenttether-analyst-0.3.1'}}
+                          'provider':material['provider'],'base_url':material['base_url'],
+                          'config_revision':material['config_revision'],'protocol':'openai_chat_completions',
+                          'adapter_version':'agenttether-analyst-0.4.0'}}
 
 
 def main():
@@ -89,7 +103,8 @@ def main():
     try:
         config=json.loads(Path(args.config).read_text(encoding='utf-8'))
         material=json.loads(Path(args.input).read_text(encoding='utf-8'))
-        result=execute(config,material)
+        credentials=json.loads(sys.stdin.buffer.read(16384).decode('utf-8'))
+        result=execute(config,material,credentials)
     except Exception as exc:
         # No traceback or HTTP body: both may contain credentials or private telemetry.
         allowed={'source_hash_mismatch','prompt_mismatch','analyst_unconfigured','invalid_model_output',

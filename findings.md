@@ -391,3 +391,28 @@ OpenAI2.29 的 AsyncCompletions.create 公共方法有同步装饰层，异步�
 - 紧凑入库日期保留秒与完整ISO title，不代表Agent执行起始时间；选中两轮按权威attempt顺序传入Compare的left/right参数，非法/跨任务/重复参数回落并提示，单轮不伪装成两轮对比。
 - 列表目标缩略保留完整title，短任务ID及来源避免相似名称混淆，完整ID/namespace/原始external_id/轮次依据仍在归组资料。
 - 技能预检按产品上下文应用：保留路由和导航，无营销Hero/照片/品牌迁移/深色主题；沿用纯白为用户明确要求。可见辅助正文提高到#627083以保持白底与浅选中态对比度，SVG辅助图标与禁用项另处理；键盘/焦点/空/未知/错误/手机布局有验证，无自动动画或新依赖。
+
+## 第 5–7 批审查
+Compare 目前两大选择框、无差异标记、全文报告堆叠，检查来源缺失。Imports 仍是巨型选择卡片、没有移除和准备反馈，加载时误显空记录。System 把 SDK 能力写成绿色已通过，且 analyst 非 unconfigured 就宣称可用，未区分未知/最近失败/已配置；这些必须按真实 API 修正。共享 EvidenceDrawer 缺少退出焦点恢复，sidebar 未连接时版本伪回退 0.1。已保存并查看 1440 原页面截图。
+
+第5–7批完成：Compare用相同状态/数量标签，避免把状态一致写成报告或执行内容一致。诊断摘要仅是现有API最多350字符投影；完整报告仍回到Run，未生成新总结或置信度。导入清单读取限制128KiB、文件40个/10MiB和同名检查沿用服务端约束；文件引用缺失只提示，完整契约仍由服务端验证。环境 analyst configured/last_call_succeeded/last_call_failed/unconfigured 明确分开，SDK只表示提供接入方式。全站状态帮助解释独立事实、证据模态退出焦点与重试修复。新增组件CSS局部化，Run布局及后端未改。
+
+## 2026-10-05：RCA 模型连接与凭据呈现调研（按用户要求先暂停实施）
+- 本轮未修改业务代码、配置或真实凭据，未调用任何模型。
+- Langfuse：项目设置 LLM Connections；实际源码为连接表（Provider / Adapter / Base URL / 脱敏 API Key）＋新增/编辑 Dialog。保存的 API key 编辑时不回填原文，自定义 Base URL / 模型位于高级项。文档：https://langfuse.com/docs/administration/llm-connection
+- LangSmith：Settings 中 Workspace secrets 和 Model configurations 分离；配置引用 secret，保存后在功能内模型下拉复用，支持各功能默认模型。https://kb.langchain.com/articles/4711692847-managing-model-configurations-via-the-api
+- Phoenix：Settings > AI Providers，命名 Custom Provider 保存服务端路由与加密凭据；Playground 选择该连接；也存在浏览器存储和环境变量模式，不能概括为全部服务端。https://arize.com/docs/phoenix/settings/custom-ai-providers
+- Braintrust：Organization > AI providers 集中保存供应商 key，区别于 Braintrust 平台 API key。https://www.braintrust.dev/articles/gemini-openai-sdk-braintrust-gateway
+- Dify：工作区供应商列表＋配置弹窗，自定义模型/多凭据/默认模型，管理权限为工作区管理员；不照搬模型商城或自动配额回退。https://docs.dify.ai/zh/cloud/use-dify/workspace/model-providers
+- 公开 Demo 的设置 URL 无法由浏览工具直接访问；研究依据是官方操作文档、官方界面资源以及 Langfuse 实际前端源码，没有宣称登录私人控制台完成实操。
+- 推荐：独立模型连接设置页（紧凑列表＋编辑弹窗），Run 内显示已选连接/模型＋管理入口，预览显示真实目的地址；密钥单独服务端保护，不写浏览器持久存储、不回填。首次只实现一个默认 RCA 连接，预留多连接选择。
+- 区分已保存/未验证与最近该配置的调用成功/失败；更换连接、地址、模型或 key 必须失效旧发送预览；不能因最近旧配置成功而显示新配置已验证。
+- 本地用户各自配置；共同服务器须先有账户/工作区授权才能承诺私人凭据隔离，团队共享 key 也应显式说明范围。原 .env 只作为明确来源，不自动作为他人的付费回退。
+- 普通调查界面展示异常步骤定位、可能原因/待验证、证据与任务检查；HGT/AgentTether/adapter/hash/raw/provenance 保留在高级记录，记录真实算法限制与版本。算法名称不是付费模型选择，token 用量也不能混合监控 Agent 与 RCA 调用。
+
+## 2026-10-05：连接实施中的确认与边界
+- 保存不等于验证；最近调用状态按连接 revision 查询，旧配置的成功不能替新配置背书。原 .env 作为显式旧来源显示，用户保存才迁入加密连接，删除永久抑制自动回退。
+- 实际发送预览由可信源码 AST 读取系统指令，不通过导入算法读取配置；完整 body hash 用于新作业，旧历史事实不回写。精确当前密钥脱敏使用一致 JSON 编码，包含非标准格式与 Unicode 场景。
+- 测试安全边界不能仅依赖“数据库不同”：不同 SQLite 文件如果同在 `.local`，共享其父目录会碰到生产凭据/定位配置。已用数据库主名隔离目录与配置文件，增加同目录双数据库回归。
+- 本版仅一个本地工作区默认 RCA 连接、OpenAI-compatible Chat Completions。不是账户级私有密钥、多租户权限或任何协议模型市场；共用服务器部署仍需认证、工作区权限、计费归属和端点策略。该限制在设置页和交接说明中明确。
+- UI 使用既有中性纯白、紧凑行和原生可键盘操作的模态框；高级算法信息没有删除，普通调查路径仍聚焦待验证原因、关联证据和独立任务检查。

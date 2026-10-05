@@ -46,7 +46,7 @@ test('设置支持外部关闭、Esc焦点恢复，保留原因分析；无存�
   await page.addInitScript(()=>{Storage.prototype.getItem=()=>{throw new Error('storage blocked');};Storage.prototype.setItem=()=>{throw new Error('storage blocked');};});
   await page.goto('/runs/'+run.run_id);await page.locator('.run-analysis-trigger').click();await settings(page);await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog',{name:'运行视图设置',exact:true})).toBeHidden();await expect(page.getByRole('button',{name:'视图设置',exact:true})).toBeFocused();await expect(page.locator('#analysis-panel')).toBeVisible();
-  await settings(page);await page.locator('.topbar strong').click();await expect(page.getByRole('dialog',{name:'运行视图设置',exact:true})).toBeHidden();await expect(page.locator('#analysis-panel')).toBeVisible();
+  await settings(page);await page.locator('.topbar>div:first-child>strong').click();await expect(page.getByRole('dialog',{name:'运行视图设置',exact:true})).toBeHidden();await expect(page.locator('#analysis-panel')).toBeVisible();
   await page.setViewportSize({width:390,height:844});await (await settings(page)).getByRole('button',{name:'紧凑',exact:true}).click();await expect(page.locator('.run-console')).toHaveClass(/density-compact/);
   const rect=(await page.getByRole('dialog',{name:'运行视图设置',exact:true}).boundingBox())!;expect(rect.x).toBeGreaterThanOrEqual(0);expect(rect.x+rect.width).toBeLessThanOrEqual(390);
   await page.getByRole('button',{name:'专注模式',exact:true}).click();await expect(page.locator('.sidebar')).toBeHidden();expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);expect(errors).toEqual([]);

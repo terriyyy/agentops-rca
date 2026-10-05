@@ -1,0 +1,11 @@
+/* Product identity only; no sidebar or content layout changes. */
+.sidebar .product-brand{display:flex;align-items:center;justify-content:flex-start;gap:11px;padding:0 1px;min-height:42px;width:100%;color:#20252d;text-decoration:none;letter-spacing:normal;border-radius:4px}
+.product-brand .product-brand-mark{display:grid;place-items:center;flex:none;width:36px;height:36px;border:1px solid #20252d;border-radius:9px;background:#20252d;color:#fff}
+.product-brand .product-brand-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.product-brand .product-brand-name{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-weight:600;font-size:23px;letter-spacing:-.8px;line-height:1.05;white-space:nowrap}
+.product-brand .product-brand-name>span{color:#34465d}
+.product-brand .product-brand-caption{display:flex;gap:6px;align-items:center;font-family:inherit;font-size:10px;font-weight:400;line-height:1.3;color:#5c697a;letter-spacing:.4px}
+.product-brand-caption>span{font-family:'DM Sans',sans-serif;font-size:10px;letter-spacing:1.3px;font-weight:600;color:#52657e}
+.sidebar .product-brand:hover .product-brand-name{color:#34465d}
+.sidebar .product-brand:focus-visible{outline:2px solid #3574bf;outline-offset:5px}
+@media(max-width:900px){.sidebar .product-brand{justify-content:center;padding:0;min-height:38px}.product-brand .product-brand-copy{display:none}.product-brand .product-brand-mark{display:grid;width:34px;height:34px;border-radius:8px}}
