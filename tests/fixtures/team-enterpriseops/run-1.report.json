@@ -1,0 +1,37 @@
+{
+  "run_meta": {
+    "final_status": "completed"
+  },
+  "rca": {
+    "mode": "historical",
+    "result": {
+      "primary_cause": "现有证据不足以确认真实的失败转折点。唯一可见的步骤 t0001 成功调用了 list_labels，并返回了标签数据；未提供外部评估器失败、断言、后续步骤或 agent_reasoning，因此不能据此推断语义性根因。该步骤只能作为当前证据范围内的候选转折点，而非已证实的错误动作。"
+    }
+  },
+  "findings": [
+    {
+      "title": "根因假设",
+      "severity": "warn",
+      "description": "无法从现有证据确定代理在 t0001 做出了错误假设。可确认的事实是 list_labels 调用成功；实际失败条件、代理当时的 reasoning、以及标签结果是否满足任务要求均未提供，因此任何更具体的假设都会超出证据。",
+      "evidence": [
+        {
+          "span_id": "sample-id-0019"
+        },
+        {
+          "span_id": "sample-id-0024"
+        }
+      ]
+    }
+  ],
+  "next_iteration_feedback": {
+    "text": "重新检查完整的 outcome_failure_evidence、后续 transition、agent_reasoning 和 observation_context；复现失败断言或验证器结果，确认失败涉及标签读取、标签字段解释，还是后续未执行的操作。若失败确实指向 t0001，再检查 list_labels 返回值的完整性及调用参数后再修改相关代码；将任何既有编辑视为可疑并重新验证。"
+  },
+  "shared_sample": {
+    "kind": "derived",
+    "report_created_at": "2026-10-04T12:42:08.622270+00:00",
+    "boundary": "在获得具体失败证据前，不要修改 list_labels 的接口、标签数据或基于截断输出推断缺失字段；不要把成功的工具响应本身当作失败根因。",
+    "verification_suggestion": "运行外部评估器或对应的最小失败测试，确认原始失败断言消失，并验证标签列表及其关键字段满足任务契约；本步骤仅规定待运行的测试，未声称已完成。",
+    "original_format": "agenttether-analyst",
+    "claim": "Unverified historical hypothesis; not evidence of RCA-driven repair."
+  }
+}

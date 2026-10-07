@@ -1,0 +1,249 @@
+{
+  "source": "EnterpriseOps-Gym/database_state",
+  "resolved": false,
+  "summary": "14 actual checks; aggregate=failed",
+  "basis": {
+    "checks": [
+      {
+        "name": "Work Coordination & Follow-Up Labels Exist",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*) \nFROM labels\nWHERE user_id = 'sample-id-0139'\nAND name IN ('Work Coordination', 'Needs Follow-Up');\n",
+          "expected_value": 2,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 2,
+          "actual": 2,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*) \nFROM labels\nWHERE user_id = 'sample-id-0139'\nAND name IN ('Work Coordination', 'Needs Follow-Up');\n",
+          "details": "Comparison equals: 2 vs 2"
+        }
+      },
+      {
+        "name": "Work Coordination Applied to All Matching Messages",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Work Coordination'\nAND ml.message_id IN ('sample-id-0140', 'sample-id-0141', 'sample-id-0142');\n",
+          "expected_value": 3,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": false,
+          "expected": 3,
+          "actual": 1,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Work Coordination'\nAND ml.message_id IN ('sample-id-0140', 'sample-id-0141', 'sample-id-0142');\n",
+          "details": "Comparison equals: 1 vs 3"
+        }
+      },
+      {
+        "name": "Follow-Up Label Applied to Thread Replies",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nJOIN messages m ON ml.message_id = m.id\nWHERE l.name = 'Needs Follow-Up'\nAND m.thread_id = 'sample-id-0143'\nAND m.id IN ('sample-id-0140', 'sample-id-0142');\n",
+          "expected_value": 2,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": false,
+          "expected": 2,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nJOIN messages m ON ml.message_id = m.id\nWHERE l.name = 'Needs Follow-Up'\nAND m.thread_id = 'sample-id-0143'\nAND m.id IN ('sample-id-0140', 'sample-id-0142');\n",
+          "details": "Comparison equals: 0 vs 2"
+        }
+      },
+      {
+        "name": "No Follow-Up Label on Single-Message Threads",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Needs Follow-Up'\nAND ml.message_id = 'sample-id-0141';\n",
+          "expected_value": 0,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Needs Follow-Up'\nAND ml.message_id = 'sample-id-0141';\n",
+          "details": "Comparison equals: 0 vs 0"
+        }
+      },
+      {
+        "name": "Draft Messages Not Relabeled",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nWHERE ml.message_id LIKE 'draft_msg_%'\nAND ml.label_id NOT IN (\n    SELECT id FROM labels WHERE name = 'DRAFT'\n);\n",
+          "expected_value": 0,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nWHERE ml.message_id LIKE 'draft_msg_%'\nAND ml.label_id NOT IN (\n    SELECT id FROM labels WHERE name = 'DRAFT'\n);\n",
+          "details": "Comparison equals: 0 vs 0"
+        }
+      },
+      {
+        "name": "No Unrelated Messages Labeled Incorrectly",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Work Coordination'\nAND ml.message_id NOT IN ('sample-id-0140','sample-id-0141','sample-id-0142');\n",
+          "expected_value": 0,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Work Coordination'\nAND ml.message_id NOT IN ('sample-id-0140','sample-id-0141','sample-id-0142');\n",
+          "details": "Comparison equals: 0 vs 0"
+        }
+      },
+      {
+        "name": "No Incorrect Follow-Up Assignment",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Needs Follow-Up'\nAND ml.message_id NOT IN ('sample-id-0140','sample-id-0142');\n",
+          "expected_value": 0,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Needs Follow-Up'\nAND ml.message_id NOT IN ('sample-id-0140','sample-id-0142');\n",
+          "details": "Comparison equals: 0 vs 0"
+        }
+      },
+      {
+        "name": "Work Coordination & Follow-Up Labels Exist",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*) \nFROM labels\nWHERE user_id = 'sample-id-0139'\nAND name IN ('Work Coordination', 'Needs Follow-Up');\n",
+          "expected_value": 2,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 2,
+          "actual": 2,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*) \nFROM labels\nWHERE user_id = 'sample-id-0139'\nAND name IN ('Work Coordination', 'Needs Follow-Up');\n",
+          "details": "Comparison equals: 2 vs 2"
+        }
+      },
+      {
+        "name": "Work Coordination Applied to All Matching Messages",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Work Coordination'\nAND ml.message_id IN ('sample-id-0140', 'sample-id-0141', 'sample-id-0142');\n",
+          "expected_value": 3,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": false,
+          "expected": 3,
+          "actual": 1,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Work Coordination'\nAND ml.message_id IN ('sample-id-0140', 'sample-id-0141', 'sample-id-0142');\n",
+          "details": "Comparison equals: 1 vs 3"
+        }
+      },
+      {
+        "name": "Follow-Up Label Applied to Thread Replies",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nJOIN messages m ON ml.message_id = m.id\nWHERE l.name = 'Needs Follow-Up'\nAND m.thread_id = 'sample-id-0143'\nAND m.id IN ('sample-id-0140', 'sample-id-0142');\n",
+          "expected_value": 2,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": false,
+          "expected": 2,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nJOIN messages m ON ml.message_id = m.id\nWHERE l.name = 'Needs Follow-Up'\nAND m.thread_id = 'sample-id-0143'\nAND m.id IN ('sample-id-0140', 'sample-id-0142');\n",
+          "details": "Comparison equals: 0 vs 2"
+        }
+      },
+      {
+        "name": "No Follow-Up Label on Single-Message Threads",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Needs Follow-Up'\nAND ml.message_id = 'sample-id-0141';\n",
+          "expected_value": 0,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Needs Follow-Up'\nAND ml.message_id = 'sample-id-0141';\n",
+          "details": "Comparison equals: 0 vs 0"
+        }
+      },
+      {
+        "name": "Draft Messages Not Relabeled",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nWHERE ml.message_id LIKE 'draft_msg_%'\nAND ml.label_id NOT IN (\n    SELECT id FROM labels WHERE name = 'DRAFT'\n);\n",
+          "expected_value": 0,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nWHERE ml.message_id LIKE 'draft_msg_%'\nAND ml.label_id NOT IN (\n    SELECT id FROM labels WHERE name = 'DRAFT'\n);\n",
+          "details": "Comparison equals: 0 vs 0"
+        }
+      },
+      {
+        "name": "No Unrelated Messages Labeled Incorrectly",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Work Coordination'\nAND ml.message_id NOT IN ('sample-id-0140','sample-id-0141','sample-id-0142');\n",
+          "expected_value": 0,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Work Coordination'\nAND ml.message_id NOT IN ('sample-id-0140','sample-id-0141','sample-id-0142');\n",
+          "details": "Comparison equals: 0 vs 0"
+        }
+      },
+      {
+        "name": "No Incorrect Follow-Up Assignment",
+        "type": "database_state",
+        "basis": {
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Needs Follow-Up'\nAND ml.message_id NOT IN ('sample-id-0140','sample-id-0142');\n",
+          "expected_value": 0,
+          "comparison_type": "equals"
+        },
+        "result": {
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "comparison_type": "equals",
+          "query": "SELECT COUNT(*)\nFROM message_labels ml\nJOIN labels l ON ml.label_id = l.id\nWHERE l.name = 'Needs Follow-Up'\nAND ml.message_id NOT IN ('sample-id-0140','sample-id-0142');\n",
+          "details": "Comparison equals: 0 vs 0"
+        }
+      }
+    ],
+    "platform_reran_checks": false
+  },
+  "updated_at": "2026-10-02T06:23:57.443060Z"
+}

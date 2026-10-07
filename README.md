@@ -43,6 +43,7 @@ cd ../..
 
 - 首页点击“载入演示样例”可直接打开失败 Run，沿页面查看历史报告和独立验收；样例始终标记为**合成演示**，不代表真实诊断效果。
 - 数据导入页选择 `manifest.json`，再选择该清单引用的 JSONL、报告、验收和反馈文件。示例清单位于 [tests/fixtures/demo/manifest.json](tests/fixtures/demo/manifest.json)。
+- 团队可导入[真实两轮脱敏体验包](tests/fixtures/team-enterpriseops/README.md)：启动平台后执行 `.\.venv\Scripts\python.exe scripts/import_package.py tests/fixtures/team-enterpriseops`。展示 7→10 次工具执行、10/14→14/14 条检查和已有报告证据；无需 Key 或权重，标记为历史导入／派生样例。第二轮由原 Agent 的检查反馈推动，不代表平台 RCA 修复闭环；完整提示词、邮件正文及自由文本日志已移除。
 - 已有 SWE-bench 案例可以用 `scripts/prepare_history.py --source <案例目录> --out data/imports/<新目录>` 生成私有导入包。原始数据不修改；`provenance.local.json` 不上传、不提交。
 - 服务启动后也可执行 `.venv/Scripts/python.exe scripts/import_package.py data/imports/<目录>`。重复导入保持幂等；相同 Run 内容发生变化会被拒绝。
 - 单轮导入后直接打开 Run；多轮导入后打开 Task 历程，再进入具体 Run 或前后对照。Run 页默认优先显示执行步骤，切换“全部事件”可查看普通日志；点击步骤在右侧核对错误、输入输出和原件。顶部 RCA 入口打开 Run 级原因分析侧面板，检查结果独立保留；报告证据可定位轨迹。运行元信息从“运行资料”打开。来源未提供的时间、关系、证据、验收或报告不补造。详情见 [Run Workspace](docs/v0.4-run-workspace.md)。

@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1",
+  "source_namespace": "team-enterpriseops-deidentified-v1",
+  "task_id": "mailbox-feedback-two-runs",
+  "goal": "邮箱标签整理：真实 Agent 两轮执行（脱敏历史样例）",
+  "sample_kind": "derived",
+  "runs": [
+    {
+      "run_key": "mailbox-run-1",
+      "attempt_index": 1,
+      "telemetry": "run-1.jsonl",
+      "report": "run-1.report.json",
+      "outcome": "run-1.outcome.json",
+      "source_algorithm": "historical analyst report"
+    },
+    {
+      "run_key": "mailbox-run-2",
+      "attempt_index": 2,
+      "telemetry": "run-2.jsonl",
+      "report": "run-2.report.json",
+      "outcome": "run-2.outcome.json",
+      "source_algorithm": "historical analyst report"
+    }
+  ]
+}

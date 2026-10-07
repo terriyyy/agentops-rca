@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "kind": "deidentified_derived_history",
+  "iteration_driver": "Original Agent evaluator feedback; not platform RCA injection",
+  "redaction": "Full prompts, mail text, personal names, free-form logs, endpoints and paths omitted; identifiers consistently aliased.",
+  "report_adapter": "One existing analyst report per run projected into historical import envelope; other reports and job history excluded.",
+  "runs": [
+    {
+      "attempt_index": 1,
+      "execution_status": "completed",
+      "outcome_status": "failed",
+      "events": 138,
+      "kinds": {
+        "event": 4,
+        "log": 109,
+        "llm": 10,
+        "tool_call": 7,
+        "tool_return": 7,
+        "verification": 1
+      },
+      "checks": 14,
+      "checks_passed": 10,
+      "diagnosis_evidence_refs": 2,
+      "timed_events": 138
+    },
+    {
+      "attempt_index": 2,
+      "execution_status": "completed",
+      "outcome_status": "passed",
+      "events": 170,
+      "kinds": {
+        "event": 4,
+        "log": 131,
+        "llm": 14,
+        "tool_call": 10,
+        "tool_return": 10,
+        "verification": 1
+      },
+      "checks": 14,
+      "checks_passed": 14,
+      "diagnosis_evidence_refs": 2,
+      "timed_events": 170
+    }
+  ]
+}
