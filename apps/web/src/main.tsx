@@ -20,6 +20,7 @@ import './experience-finish.css';
 import {StatusGuide} from './status-guide';
 import {Brand} from './brand';
 import {ModelSettingsPage} from './model-settings';
+import './semantic-colors.css';
 
 const EvidenceContext = createContext<(id: string) => void>(()=>{});
 const formatNumber = (value:number)=>new Intl.NumberFormat('zh-CN').format(value);

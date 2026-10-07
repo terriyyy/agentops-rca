@@ -1,0 +1,104 @@
+/* Functional color roles. Neutral surfaces and existing layout remain unchanged. */
+:root {
+  --ui-action: #1d4ed8;
+  --ui-action-hover: #1e40af;
+  --ui-selected: #eaf2ff;
+  --ui-selected-border: #93b4ef;
+  --ui-hover: #f5f8fe;
+  --ui-success: #16704a;
+  --ui-success-soft: #edf8f1;
+  --ui-danger: #b42318;
+  --ui-danger-soft: #fff1f0;
+  --ui-danger-border: #efb6b0;
+  --ui-attention: #925500;
+  --ui-attention-soft: #fff7e8;
+  --ui-neutral: #526174;
+  --ui-neutral-soft: #f2f4f7;
+  --ui-tool: #2563eb;
+  --ui-llm: #9333ea;
+  --ui-error-marker: #dc2626;
+  --success: var(--ui-success);
+  --success-bg: var(--ui-success-soft);
+  --danger: var(--ui-danger);
+  --danger-bg: var(--ui-danger-soft);
+  --warning: var(--ui-attention);
+  --warning-bg: var(--ui-attention-soft);
+}
+
+/* Selection is an interaction state, rather than a result or observation type. */
+.sidebar nav a.active { background:var(--ui-selected); color:var(--ui-action); box-shadow:none }
+.sidebar nav a.active:hover { background:#e0ebff }
+.sidebar nav a.active>svg { color:var(--ui-action) }
+:where(button,a,input,select,textarea,summary):focus-visible { outline-color:var(--ui-action) }
+.home-workbench .home-run-row:focus-visible { outline-color:var(--ui-action) }
+.home-run-row:hover>.home-run-open { color:var(--ui-action) }
+.home-heading-actions .button { background:var(--ui-action); border-color:var(--ui-action); color:#fff }
+.home-heading-actions .button:hover { background:var(--ui-action-hover); border-color:var(--ui-action-hover) }
+
+/* Completion / capture / hypothesis remain separate from successful task checks. */
+.run-console { --trace-blue:var(--ui-action); --trace-blue-soft:var(--ui-selected); --trace-red:var(--ui-danger); --trace-green:var(--ui-success) }
+.run-console .console-states .tone-complete,
+.run-console .console-states .tone-hypothesis,
+.run-console .console-states .tone-localization { color:var(--ui-neutral) }
+.run-console .console-states .tone-running { color:var(--ui-action) }
+.run-console .console-states .tone-passed { color:var(--ui-success) }
+.run-console .console-states .tone-failed { color:var(--ui-danger) }
+.run-console .console-states .tone-partial { color:var(--ui-attention) }
+.home-run-status.analysis { color:var(--ui-neutral) }
+.home-run-status.running { color:var(--ui-action) }
+.home-run-status.passed { color:var(--ui-success) }
+.home-run-status.failed,.home-job-failed,.home-capture-checks strong.failed-check { color:var(--ui-danger) }
+.home-workbench .home-capture-checks>a.received>svg:first-child { color:var(--ui-action) }
+.home-workbench .home-capture-checks>a.check-failed>svg:first-child { color:var(--ui-danger) }
+.home-workbench .home-capture-checks>a[data-outcome=passed]>svg:first-child,
+.home-workbench .home-capture-checks>a[data-outcome=passed] strong { color:var(--ui-success) }
+.home-workbench .home-capture-checks>a[data-outcome=unknown]>svg:first-child { color:var(--ui-neutral) }
+.home-capture-state.receiving { background:var(--ui-selected); color:var(--ui-action) }
+.home-capture-state.warning { background:var(--ui-attention-soft); color:var(--ui-attention) }
+
+/* One prominent RCA entry; ordinary primary buttons retain their neutral treatment. */
+.run-console .console-links .run-analysis-trigger { background:var(--ui-action); border-color:var(--ui-action); color:#fff }
+.run-console .console-links .run-analysis-trigger:hover { background:var(--ui-action-hover); border-color:var(--ui-action-hover) }
+.run-console .console-links .run-analysis-trigger[aria-expanded=true] { background:var(--ui-selected); color:var(--ui-action); border-color:var(--ui-selected-border) }
+.run-analysis-trigger[aria-expanded=true]>span { color:var(--ui-action); border-color:var(--ui-selected-border) }
+.run-footer [aria-selected=true] { color:var(--ui-action) }
+.run-footer [aria-selected=true]::after { background:var(--ui-action) }
+.run-investigation .analysis-result-heading>strong { background:var(--ui-neutral-soft); color:var(--ui-neutral) }
+.run-side-heading>svg { color:var(--ui-action) }
+.run-investigation .hypothesis-evidence .evidence-chip,
+.run-investigation .conclusion-tools button,
+.analysis-model-connection>a,.analysis-configure-link,.followup-history,
+.run-console .return-analysis { color:var(--ui-action) }
+.run-investigation .hypothesis-evidence .evidence-chip:hover { color:var(--ui-action-hover) }
+.analysis-evidence-row.active { background:var(--ui-selected) }
+.analysis-evidence-row:hover { background:var(--ui-hover) }
+
+/* Solid type colors keep their timing geometry, including under selection. */
+.run-console .event-timing.type-span,
+.run-console .event-timing.type-tool_call,
+.run-console .event-timing.type-tool_return { --timeline-fill:var(--ui-tool) }
+.run-console .event-timing.type-llm { --timeline-fill:var(--ui-llm) }
+.run-console .event-timing.type-verification { --timeline-fill:var(--ui-neutral) }
+.run-console .trace-type.type-verification { background:var(--ui-neutral-soft); color:var(--ui-neutral); border-color:#dde3eb }
+.run-console .execution-item.failed>.console-event { background:#fff8f7 }
+.run-console .console-event.trace-row:hover,
+.run-console .execution-item.failed>.console-event:hover,
+.run-console .execution-item.referenced>.console-event:hover { background:var(--ui-hover) }
+.run-console .console-event.trace-row.selected,
+.run-console .execution-item.failed>.console-event.selected,
+.run-console .execution-item.referenced>.console-event.selected { background:var(--ui-selected); box-shadow:inset 0 1px var(--ui-selected-border),inset 0 -1px var(--ui-selected-border) }
+.run-console .trace-reference { color:var(--ui-action) }
+.run-console .console-event.selected .duration-bar,
+.run-console .console-event.selected .time-point { box-shadow:0 0 0 1px var(--ui-action) }
+.run-console .failed .duration-bar,.run-console .failed .time-point { background:var(--ui-error-marker); border-color:var(--ui-error-marker) }
+.run-console .selected-error { background:var(--ui-danger-soft); border-color:var(--ui-danger-border); color:var(--ui-danger) }
+.run-console .selected-error h3 { color:var(--ui-danger) }
+.run-console .selected-error .code-viewer { border-color:var(--ui-danger-border) }
+.run-console .selected-error .contextual-analysis { color:var(--ui-action) }
+.run-console .event-result.failed,.run-console .failed .event-duration { color:var(--ui-danger) }
+.run-console .event-result.succeeded { color:var(--ui-success) }
+.run-console .event-references button { color:var(--ui-action) }
+.run-console .control-segment button[aria-pressed=true],
+.run-console .trace-control[aria-pressed=true] { color:var(--ui-action); border-color:var(--ui-selected-border) }
+.run-console .trace-control[aria-pressed=true] { background:var(--ui-selected) }
+.run-console .trace-error-toggle[aria-pressed=true] { color:var(--ui-danger); background:var(--ui-danger-soft); border-color:var(--ui-danger-border) }
