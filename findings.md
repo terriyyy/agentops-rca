@@ -1,5 +1,25 @@
 # 方案审查发现
 
+## 实名分工确认（2026-10-05）
+
+用户明确指定：徐安负责RCA反馈实际传入下一轮Agent、同Task后续Run和独立复验；陈志敏负责Agent接入/采集可靠性；林亦航负责RCA算法优化。该实名安排替代先前临时A/B/负责人建议。交付文档采用正式第三人称，删除时间节奏，重点细化预期产品效果、数据/Prompt语义、跨模块接口、异常与验收。
+
+## 三人交接复核（2026-10-05）
+
+实际采集仍为显式对象/入口包装；AgentTether非流式OpenAI/LangChain/MCP桥接已验证，stream记录unsupported，UI仅可靠工具配对聚合Span。CLI能一命令包装进程，不自动获得任意Agent的模型/工具语义。真实两轮邮箱case的第二轮由原Agent反馈推动，没有平台RCA注入修复证明；已有Task多轮和对照不等于RCA修复闭环。
+
+模型连接已支持可配置OpenAI-compatible Chat Completions服务/模型，并非仅ChatAnywhere；单本地工作区默认连接，无账户隔离。README的真实Agent pending、底部主诊断入口，以及交接旧模型限制已修正。226模板需显式AGENTOPS_DIAGNOSIS_CONFIG指向本checkout注册文件：隔离数据库默认使用不同定位配置，不会自动读正常配置或仓库.env。
+
+建议责任：负责人产品/人工修复复验/公共契约/集成，A接入与采集可靠性，B基线与RCA评测。A无需权重，但AgentTether桥接需要私有采集源；B需授权bundle/可信校验或受控实例。首两天交付环境自检、一个支持入口设计、3个核对案例评测入口及共同case/关系设计。当前commit1c1049d本地未推送，配色和本轮文档未提交，正式交接须固定远端可获取SHA。
+
+## 功能色精修（2026-10-05）
+
+参考前轮官方材料：Langfuse responsive timeline（https://langfuse.com/changelog/2026-08-28-responsive-timeline）以类型色帮助定位 observation；Datadog trace view（https://docs.datadoghq.com/tracing/trace_explorer/trace_view/）用数据分类色，错误单独突出；Primer color usage（https://primer.style/product/getting-started/foundations/color-usage/）区分 accent / danger / success / attention。本轮没有把营销页或未访问的私有控制台当作观察证据。
+
+真实页面审查发现：首页事件/工具/用量接收均使用绿色，容易与任务通过混淆；Diagnosis 假设状态与 LLM 类型均紫色；任务检查事件类型标为琥珀，易与警告混淆。保留式处理：接收确认蓝色、检查真实 passed 才绿色，未知中性；完成/采集/已有假设中性；LLM 类型保留紫色，普通检查类型中性；失败行和错误区域红色。新增 semantic-colors.css 集中功能色，作为最后一个全局样式入口。颜色不代替既有文本、状态点、错误图标及标签。
+
+只突出首页开始监控和 Run RCA 入口，其余主要按钮保留深色；选择行、时间条选中描边、证据关联链接、当前分析页签统一交互蓝。未改关系/时间几何/布局/后端，未调用模型或HGT。首页仅加 data-outcome 样式挂钩，值来自现有任务结果且仅在检查记录已收到时设置。截图在 .local/color-before-*.png、color-after-*.png（Git 排除）。
+
 ## Run 视图控制第二批（2026-10-04）
 
 800d723 已提交前期 U4、RCA侧面板和第一批控件：18个暂存文件扫描未发现密钥/权重/运行记录；没有推送远程。第二批新增 run-view.tsx/.css：Shell 提供只读视图偏好 context，只有 Run 路由启用隐藏导航，离开Run或刷新恢复；密度在 sessionStorage 保留，禁用存储仍可操作。原生 Popover 让设置浮层不被工作区裁剪，位置随视口/滚动变化；Esc关闭浮层恢复焦点，不关闭RCA。

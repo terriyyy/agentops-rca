@@ -1,8 +1,48 @@
 # 团队开发交接：代码、AgentTether 与 HGT 权重
 
-更新：2026-10-02。项目目录名为 `agentops-rca`。本文依据当前代码整理；Windows 本地链路已有验收，226 服务器的账号、路径、依赖安装和运行链路尚未实机核验。文中服务器命令是待验证模板，不表示已经部署。
+更新：2026-10-05。项目目录名为 `agentops-rca`。本文依据当前代码整理；Windows 本地链路已有验收，真实 Agent 在本机执行、226 提供隔离测试 MCP 的拓扑也已验证；平台 API＋诊断 worker 在226的完整部署、每位成员的账号权限与依赖仍需现场核验。文中服务器部署命令是待验证模板。
 
-发布说明：本文与最新V0.4前端增量纳入同一次团队交接提交。下方“3个提交/未提交UI”是交接初稿审查时的历史快照；成员应以本交接版本或之后的main为起点，不采用之前的旧提交。
+发布说明：模型连接及接入流程的基线为1c1049d；交接采用包含后续配色与实名分工修订的提交版本。分发时确认该版本已推送，并提供**远端可获取的完整commit SHA**。下方2026-10-02审查是历史快照，本地提交不表示GitHub已包含最新功能。
+
+## 0. 一次交接应交付什么
+
+先读[三人分工与交付要求](project-gaps-and-team-division.md)。建议先做30–45分钟共同演示，再让成员各自在干净目录复现，不能只观看已有实例就视为交接完成。
+
+交付清单：
+
+- 仓库权限、交接版本SHA和各自feature分支；每人一份任务单（目标、负责目录、接口、交付物、验收标准）。
+- README和本文；陈志敏阅读采集接入/兼容边界，林亦航阅读HGT/analyst与模型连接，徐安阅读反馈/复跑关系，公共Schema共同协调。
+- 可直接运行的无模型synthetic样例；其预期是执行完成、任务检查失败、工具配对、实时事件和原件可查。
+- 按需提供获授权私有依赖清单及可信校验值；不发送整个项目、其他成员的虚拟环境、数据库或.env。
+- 真实案例的复跑前置条件：原Agent/case、MCP准备步骤、各自模型配置及预算；旧临时端口/容器已清理，不能照抄旧Run链接或脚本就期望复跑。
+
+现场演示顺序：从CLI启动样例→网页实时工具Span→失败检查→错误/原件→RCA预览与人工确认的流程说明→同一Task多轮。说明“后续成功”目前可能是原Agent反馈带来，平台RCA驱动的修复复验是下一阶段工作。无模型入门不要求实际调用RCA。
+
+成员交回：自己的启动截图/Run结果、运行命令、依赖版本、捕获范围/不可用项、首个小PR或任务设计。负责人核对后确认可开始并行开发。
+
+### Git协作模板
+
+每人用自己的GitHub账号；URL不能拼接密钥。下方占位符先替换，`<REMOTE_HANDOFF_COMMIT_SHA>`必须已推送。
+
+```powershell
+git clone <TEAM_REPOSITORY_URL> agentops-rca
+cd agentops-rca
+git switch -c feature/<member>-<topic> <REMOTE_HANDOFF_COMMIT_SHA>
+```
+
+完成小步工作后：
+
+```powershell
+git status --short
+git diff --check
+git diff
+git add <reviewed-source-paths>
+git diff --cached
+git commit -m "feat(<module>): <concrete change>"
+git push -u origin HEAD
+```
+
+在GitHub创建PR，写问题/行为、接口变化、验证结果及限制，由负责人review合并。需要同步main时先确认自己的工作已保存，再fetch/merge；不要为了同步运行reset --hard，也不要三人直接覆盖main或同一服务器目录。公共契约变更先协调，CLI、worker和UI不各自发明字段。
 
 ## 1. 成员拿什么，在哪里开发
 
@@ -15,6 +55,8 @@
 | 分析面板、预览/确认交互开发 | 当前前端与测试 | 合成历史报告、受控Mock；不冒充真实推理 | 否 |
 | 真实HGT定位、适配器联调 | 平台worker及配置脚本 | 获授权的AgentTether源码、匹配bundle、独立诊断Python | 是 |
 | 真实analyst RCA | 同上 | HGT已就绪，以及获授权的模型服务配置 | 是；另需API凭据 |
+
+补充：陈志敏若使用AgentTether采集桥接，需要获授权的私有采集源码（目前加载三个ops文件），但不需要torch/HGT权重。普通SDK/CLI和Mock测试无需该私有源；相应私有兼容测试在缺源环境明确跳过。
 
 HGT是本地模型推理，本身不使用LLM API key。没有权重时监控、轨迹、上报检查和历史报告仍可用，但不能执行真实HGT；当前联网RCA也依赖成功HGT候选，不能只填key就跳过。
 
@@ -106,7 +148,9 @@ py -3.12 -m venv .local/diagnosis-venv
 
 重新启动后端，查看“运行环境”或 `GET /api/diagnosis/capabilities`，确认HGT就绪。对合成失败Run手动“定位异常步骤（本机）”，核对候选、证据和技术来源；不能将加载成功或异常分数当作准确率/根因概率结论。
 
-若要完整RCA，另外复制 `.env.example`为本机 `.env`并配置自己获授权的模型服务；本项目当前analyst适配限定ChatAnywhere的HTTPS `/v1`地址。配置文件不能发给其他成员或提交。只有HGT成功、预览实际发送内容并人工确认后才调用模型；不以真实付费调用作为普通成员入门前置。
+若要完整RCA，在“运行环境→管理模型连接”（`/settings/models`）保存自己获授权的服务地址、模型ID和API Key；保存不会发请求。当前支持OpenAI-compatible Chat Completions，HTTPS或本机HTTP，模型/供应商不固定为ChatAnywhere或gpt-5.6-luna；原生Responses/Anthropic不受支持。`.env`仅兼容旧本机配置，不建议把负责人配置复制给成员。只有HGT成功、预览实际请求并人工确认后才调用模型；真实付费调用不作为入门前置。
+
+这是**一个本地工作区默认RCA连接**，没有账户级私人凭据隔离。各人本地实例分别配置；共用服务器实例会共用该工作区连接，应由管理员明确权限与计费归属，不能宣传为每个成员的私人key。被监控Agent自己的模型/key与平台RCA连接是两份独立配置，见[模型连接说明](rca-model-connections.md)。不分发`.local/rca-credentials/`，也不复制加密文件期望在另一Windows用户下使用。
 
 ## 5. 226服务器：代码与私有依赖分开部署
 
@@ -141,10 +185,11 @@ python3.12 -m venv .local/diagnosis-venv
   --bundle "<服务器匹配bundle目录>" \
   --expected-weight-sha256 "<负责人独立确认的SHA-256>"
 export AGENTOPS_DB="$PWD/.local/server-development.sqlite3"
+export AGENTOPS_DIAGNOSIS_CONFIG="$PWD/.local/diagnosis-config.json"
 .venv/bin/python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 18000
 ```
 
-18000仅为示例，每个开发实例由管理员分配不冲突端口。一个实例只有一个Uvicorn worker，不加 `--workers`；不同实例不共写同一个SQLite文件。不要在上游实验目录启动平台或覆盖已有算法环境，Windows的start.ps1不用在Linux执行。
+18000仅为示例，每个开发实例由管理员分配不冲突端口。一个实例只有一个Uvicorn worker，不加 `--workers`；不同实例不共写同一个SQLite文件。每个成员有自己的checkout，模板显式定位配置指向自己的注册文件；设置AGENTOPS_DB的隔离实例默认不读取仓库.env，其RCA凭据按数据库主名隔离，应在模型连接页重新设置。不要在上游实验目录启动平台或覆盖已有算法环境，Windows的start.ps1不用在Linux执行。
 
 成员本机通过自己的SSH登录，示例 `<SSH_ALIAS>`替换为获准使用的226主机别名：
 

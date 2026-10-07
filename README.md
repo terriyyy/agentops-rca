@@ -2,7 +2,7 @@
 
 面向本地代码／运维 Agent 的实时监控、故障调查与独立验收平台。诊断阶段可手动使用 AgentTether 的离线 HGT 和 analyst RCA。
 
-V0.1 历史工作台与 V0.2 实时监控已实现：历史导入、命令启动 Python Agent、工具／日志采集、SSE 实时页面、补传、中断处理、独立验收证据与两轮对照。V0.2 核心以确定性工具 Agent 验收；真实模型 Agent 兼容性保持 pending。V0.3 已接入真实权重的离线 HGT 定位，以及手动触发的 AgentTether analyst RCA 假设与证据追溯。自动修复重试未接入。
+V0.1 历史工作台与 V0.2 实时监控已实现：历史导入、命令启动 Python Agent、工具／日志采集、SSE 实时页面、补传、中断处理、独立验收证据与两轮对照。V0.2 核心以确定性工具 Agent 验收，随后已验证一个真实 EnterpriseOps-Gym Agent 的两轮采集与独立检查，见[真实桥接复跑](docs/agenttether-real-agent-replay.md)；不代表任意Agent、并发、完整逐token流式或226原地执行均受支持。V0.3 已接入真实权重的离线 HGT 定位，以及手动触发的 AgentTether analyst RCA 假设与证据追溯。平台RCA驱动的修复复验仍待开发。
 
 V0.4 将入口改为以 Run 为中心的工作台：首页直接展示正在运行和需要处理的 Run；Run 详情使用执行轨迹主视图、固定选中事件详情和 Run 级根因假设／独立验收面板；Task 页只承担同一目标下的多轮历史与前后对照。执行完成不代表任务验收通过，诊断报告也不改变验收结论。
 
@@ -45,7 +45,7 @@ cd ../..
 - 数据导入页选择 `manifest.json`，再选择该清单引用的 JSONL、报告、验收和反馈文件。示例清单位于 [tests/fixtures/demo/manifest.json](tests/fixtures/demo/manifest.json)。
 - 已有 SWE-bench 案例可以用 `scripts/prepare_history.py --source <案例目录> --out data/imports/<新目录>` 生成私有导入包。原始数据不修改；`provenance.local.json` 不上传、不提交。
 - 服务启动后也可执行 `.venv/Scripts/python.exe scripts/import_package.py data/imports/<目录>`。重复导入保持幂等；相同 Run 内容发生变化会被拒绝。
-- 单轮导入后直接打开 Run；多轮导入后打开 Task 历程，再进入具体 Run 或前后对照。Run 页默认展示完整轨迹，点击事件在右侧核对错误、输入输出和原始证据；底部 Run 级面板分别查看根因假设与独立验收，报告证据可反向定位轨迹。运行元信息从“运行资料”打开。来源未提供的时间、关系、证据、验收或报告不补造。详情见 [Run Workspace](docs/v0.4-run-workspace.md)。
+- 单轮导入后直接打开 Run；多轮导入后打开 Task 历程，再进入具体 Run 或前后对照。Run 页默认优先显示执行步骤，切换“全部事件”可查看普通日志；点击步骤在右侧核对错误、输入输出和原件。顶部 RCA 入口打开 Run 级原因分析侧面板，检查结果独立保留；报告证据可定位轨迹。运行元信息从“运行资料”打开。来源未提供的时间、关系、证据、验收或报告不补造。详情见 [Run Workspace](docs/v0.4-run-workspace.md)。
 
 不会读取 `.local/workspace.json` 自动扫描外部目录，也不会自动启动模型或运行日志中的命令。
 
@@ -72,6 +72,7 @@ $env:AGENTOPS_DB = "$PWD/.local/e2e.sqlite3"
 
 - [AgentTether 采集接入](docs/agenttether-capture-integration.md)：私有采集模块桥接、无模型自检、EnterpriseOps 可选接入与兼容性边界。
 - [团队开发交接](docs/team-development-handoff.md)：成员无权重开发、私有算法依赖分发、226服务器隔离联调、SSH转发及Git核查边界。
+- [当前阶段与三人分工](docs/project-gaps-and-team-division.md)：徐安的RCA反馈迭代、陈志敏的接入采集、林亦航的RCA优化，以及交付效果、接口与验收标准。
 - [第一版开发计划](docs/v1-development-plan.md)：范围、模块、页面、阶段和验收标准。
 - [V0.2 实时监控开发计划](docs/v0.2-development-plan.md)：接入边界、采集与传输、实时页面、开发顺序及验收清单。
 - [V0.2 接入与演示](docs/v0.2-agent-integration.md)：可执行命令、工具 SDK、补传及真实模型兼容性验收。
