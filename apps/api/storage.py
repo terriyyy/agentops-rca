@@ -54,7 +54,7 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 3:
+            if version > 4:
                 raise RuntimeError("数据库版本高于应用支持版本")
             if version == 0:
                 db.executescript(MIGRATION)
@@ -98,6 +98,27 @@ class Store:
                   payload TEXT NOT NULL, UNIQUE(run_id,request_id)
                 );
                 PRAGMA user_version=3;
+                COMMIT;
+                ''')
+            if version < 4:
+                if version == 3:
+                    backup=path.with_name(path.name+'.v3-backup.sqlite3')
+                    if not backup.exists():
+                        with sqlite3.connect(backup) as target:db.backup(target)
+                db.executescript('''
+                BEGIN IMMEDIATE;
+                CREATE TABLE feedback_records (
+                  id TEXT PRIMARY KEY,
+                  from_run_id TEXT NOT NULL REFERENCES runs(id),
+                  request_id TEXT NOT NULL,
+                  state TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  payload TEXT NOT NULL,
+                  UNIQUE(from_run_id,request_id)
+                );
+                CREATE INDEX IF NOT EXISTS feedback_records_run ON feedback_records(from_run_id,created_at);
+                PRAGMA user_version=4;
                 COMMIT;
                 ''')
 
