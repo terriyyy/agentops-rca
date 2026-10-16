@@ -311,3 +311,157 @@ def test_editing_cannot_remove_factual_indexes(client):
     assert '证据索引' in rendered
     assert '[任务检查失败]' in rendered
     assert evidence_id[:8] in rendered
+
+
+def structured_basis(failed=1, passed=0):
+    checks = []
+    for i in range(failed):
+        checks.append({'name': '失败检查 %d' % i, 'type': 'database_state',
+                       'basis': {'expected_value': 'expected-%d' % i},
+                       'result': {'passed': False, 'expected': 'expected-%d' % i,
+                                  'actual': 'actual-%d' % i, 'comparison_type': 'equals',
+                                  'details': '差异说明 %d' % i}})
+    for i in range(passed):
+        checks.append({'name': '通过检查 %d' % i, 'type': 'database_state',
+                       'basis': {'expected_value': 1},
+                       'result': {'passed': True, 'expected': 1, 'actual': 1,
+                                  'comparison_type': 'equals', 'details': '一致 %d' % i}})
+    return {'checks': checks, 'platform_reran_checks': False}
+
+
+def run_with_structured_outcome(client, basis, *, failed_tool=False, goal='test'):
+    from tests.integration.test_live import create, event, send, finish
+    run, headers, _ = create(client, goal=goal)
+    items = [event(1), event(2, kind='tool_return', ok=True, output={'returncode': 0})]
+    if failed_tool:
+        items.append(event(3, name='shell', kind='tool_return', ok=False,
+                           output={'stderr': 'boom'}, error_signature='AssertionError: 3 != 1'))
+    n = len(items) + 1
+    items.append(event(n, kind='verification', name='OUTCOME_EVIDENCE',
+                       input={'status': 'failed', 'source': 'enterprise-gym',
+                              'basis': basis, 'summary': 'aggregate=failed'}))
+    assert send(client, run, headers, items).status_code == 200
+    assert finish(client, run, headers, producers={'test': len(items)}).status_code == 200
+    return run['run_id']
+
+
+# 13. R4：结构化检查结果必须保留失败项的名称/expected/actual，不被顺序截断埋没
+def test_structured_failed_checks_keep_expected_actual(client):
+    run_id = run_with_structured_outcome(client, structured_basis(failed=2, passed=5))
+    rec = draft(client, run_id).json()
+    item = rec['sections']['failures']['items'][0]
+    assert item['check_total'] == 7 and item['check_failed_count'] == 2
+    names = [c['name'] for c in item['failed_checks']]
+    assert names == ['失败检查 0', '失败检查 1']
+    rendered = rec['rendered_text']
+    assert '失败检查 0' in rendered and 'expected=expected-0' in rendered
+    assert 'actual=actual-0' in rendered and '差异说明 0' in rendered
+    # 通过检查不占失败索引篇幅
+    assert '通过检查 0' not in rendered
+    # 复验清单也是结构化的，含失败项与计数
+    verify = rec['sections']['verification']['items'][0]
+    assert verify['check_total'] == 7 and verify['failed_names'] == ['失败检查 0', '失败检查 1']
+    assert '共7项(失败2)' in rendered
+
+
+# 14. R5：工具错误签名/详情必须出现在“实际投递正文”
+def test_tool_error_facts_render_in_body(client):
+    run_id = run_with_structured_outcome(client, structured_basis(), failed_tool=True)
+    rec = draft(client, run_id).json()
+    assert 'AssertionError: 3 != 1' in rec['rendered_text']
+    assert rec['sections']['failures']['items'][0]['error_signature'].startswith('AssertionError')
+
+
+# 15. R3：finding 标题、工具名等非正文文本字段也必须脱敏
+def test_titles_and_names_are_redacted_everywhere(client):
+    from tests.integration.test_live import create, event, send, finish
+    secret_a = 'sk-' + 'a' * 20
+    secret_b = 'sk-' + 'b' * 20
+    run, headers, _ = create(client)
+    items = [event(1, name='leak step ' + secret_a),
+             event(2, name='leak step ' + secret_a, kind='tool_return', ok=False,
+                   output='bad', error_signature='AssertionError'),
+             event(3, kind='verification', name='OUTCOME_EVIDENCE',
+                   input={'status': 'failed', 'source': 'pytest', 'basis': 'x'})]
+    send(client, run, headers, items)
+    finish(client, run, headers, producers={'test': 3})
+    report = {**ANALYST_REPORT,
+              'findings': [{'title': '标题带凭据 api_key=' + secret_b,
+                            'severity': 'warn', 'description': '描述', 'evidence': []}]}
+    did = insert_diagnosis(client, run['run_id'], report)
+    rec = draft(client, run['run_id'], diagnosis_id=did).json()
+    body = json.dumps(rec, ensure_ascii=False)
+    assert secret_a not in body and secret_b not in body
+    assert rec['redaction']['applied'] is True
+    conf = confirm(client, rec).json()
+    archive = json.dumps(client.get('/api/evidence/' + conf['content_ref']['evidence_id']).json(),
+                         ensure_ascii=False)
+    assert secret_a not in archive and secret_b not in archive
+
+
+# 16. R6：evidence 表自身为 ambiguous 的引用不得被提升为 resolved
+def test_ambiguous_evidence_keeps_ambiguous_status(client):
+    from apps.api.importer import digest
+    run_id = run_with_check(client)
+    with client.app.state.store.connect() as db:
+        outcome = payload(db.execute(
+            'SELECT payload FROM outcomes WHERE run_id=?', (run_id,)).fetchone())
+        aid = 'a' + '1' * 31
+        eid = 'e' + '2' * 31
+        db.execute('INSERT INTO artifacts VALUES (?,?,?,?,?,?)',
+                   (aid, run_id, 'ambiguous.json', 'report', digest('{}'), '{}'))
+        ref = {'evidence_id': eid, 'run_id': run_id, 'artifact_id': aid,
+               'filename': 'ambiguous.json', 'line': None, 'json_pointer': '',
+               'event_id': None, 'resolution_status': 'ambiguous',
+               'original_reference': '原始歧义引用'}
+        db.execute('INSERT INTO evidence VALUES (?,?,?,?)', (eid, run_id, aid, dumps(ref)))
+    report = {**ANALYST_REPORT,
+              'findings': [{'title': '根因假设', 'severity': 'warn', 'description': '描述',
+                            'evidence': [{'evidence_id': eid, 'event_id': None,
+                                          'resolution_status': 'resolved',
+                                          'label': '模型给了 resolved 但库内是 ambiguous'},
+                                         {'evidence_id': outcome['evidence_id'], 'event_id': None,
+                                          'resolution_status': 'resolved', 'label': '失败检查证据'}]}]}
+    did = insert_diagnosis(client, run_id, report)
+    rec = draft(client, run_id, diagnosis_id=did).json()
+    statuses = {i['evidence_id']: i['resolution_status']
+                for i in rec['sections']['evidence']['items']}
+    assert statuses[eid] == 'ambiguous'
+    assert statuses[outcome['evidence_id']] == 'resolved'
+    assert any(u['evidence_id'] == eid and u['resolution_status'] == 'ambiguous'
+               for u in rec['unresolved_refs'])
+    assert '[ambiguous]' in rec['rendered_text']
+
+
+def insert_failed_outcome(client, run_id, basis, source='enterprise-gym'):
+    """Insert an outcome row directly (bypasses the 64 KiB per-event ingestion limit)."""
+    from apps.api.importer import uid
+    oid = uid()
+    outcome = {'outcome_id': oid, 'run_id': run_id, 'status': 'failed', 'source': source,
+               'basis': basis, 'summary': 'aggregate=failed', 'authoritative': True,
+               'evidence_id': None, 'reward': None, 'verification_origin': 'evaluated',
+               'observed_at': '2026-10-01T00:00:00+00:00'}
+    with client.app.state.store.connect() as db:
+        db.execute('INSERT INTO outcomes VALUES (?,?,?)', (oid, run_id, dumps(outcome)))
+
+
+# 17. R7：即使失败检查极多，生成与确认都不得超过 24000 字节渲染预算
+def test_rendered_budget_is_enforced_at_create_and_confirm(client):
+    run_id = run_with_check(client)  # 小的失败验收，使 run 投影为 outcome failed
+    insert_failed_outcome(client, run_id, structured_basis(failed=300))
+    create_resp = draft(client, run_id)
+    assert create_resp.status_code == 200, create_resp.text
+    rec = create_resp.json()
+    assert len(rec['rendered_text'].encode('utf-8')) <= 24000
+    # 结构化字段不丢：300 项失败检查全部保留在 sections
+    big = next(i for i in rec['sections']['failures']['items']
+               if i.get('check_total') == 300)
+    assert len(big['failed_checks']) == 300
+    omission = next(o for o in rec['truncation']['omissions']
+                    if o['kind'] == 'failed_checks_not_rendered')
+    assert omission['total'] == 300 - 20 - 40
+    # 编辑阶段超量被明确拒绝（草稿态，422，不会静默压缩）
+    too_long = patch_text(client, rec, rca='字' * 8000)
+    assert too_long.status_code == 422
+    # 草稿内容未被失败的编辑破坏，确认仍成功
+    assert confirm(client, rec).status_code == 200

@@ -79,6 +79,8 @@
 .feedback-action-buttons {display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 .feedback-cancel-form {display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .feedback-cancel-form input {border:1px solid #cfd7e3;border-radius:7px;padding:6px 9px;font:inherit;font-size:12px;min-width:220px;}
+.feedback-dirty-warning {margin:0;color:var(--ui-danger);background:var(--ui-danger-soft);border:1px solid var(--ui-danger-border);border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.5;}
+.feedback-check-line em {color:#b04a4a;}
 .feedback-confirm-arm {display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--ui-attention-soft);border:1px solid #ecd29a;border-radius:10px;padding:9px 11px;color:var(--ui-attention);}
 .feedback-confirm-arm>svg {flex:none;}
 .feedback-confirm-arm div {display:flex;flex-direction:column;font-size:12px;line-height:1.45;}

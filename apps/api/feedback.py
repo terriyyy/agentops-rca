@@ -4,6 +4,7 @@ A confirmed record is only a prepared, hash-pinned artifact plus a content
 reference. This module never creates a Run, launches an agent or calls a model;
 actual injection and receipt verification belong to a later phase.
 """
+import json
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -16,6 +17,18 @@ from .storage import dumps, payload
 
 SCHEMA = 'feedback-1.0'
 MAX_FEEDBACK_BYTES = 24_000
+# Hard sanity ceiling for the full structured record (rendered body stays <= 24000).
+MAX_RECORD_BYTES = 200_000
+# Failed checks are the most important facts for the next round: detail lines first,
+# name-only lines next; everything beyond stays in the structured sections/API with
+# an explicit omission ledger entry.
+CHECK_NAME_CAP = 120
+CHECK_VALUE_CAP = 160
+CHECK_DETAIL_CAP = 240
+RENDER_DETAIL_CHECKS = 20
+RENDER_NAME_CHECKS = 40
+REVERIFY_NAME_CAP = 100
+REVERIFY_NAMES = 10
 SECTION_KEYS = ('task', 'failures', 'rca', 'evidence', 'guidance', 'verification')
 SECTION_TITLES = {
     'task': '1. 原任务',
@@ -60,12 +73,89 @@ def utcnow():
 
 
 def redact(value):
-    """Return (redacted_text, secret_match_count). Banning happens before hashing."""
+    """Return (redacted_text, secret_match_count). Banning happens before hashing.
+
+    Idempotent: an already substituted ``api_key=[REDACTED]`` is not counted again,
+    so the deep sweep can safely cover every string field.
+    """
     text = str(value or '')
-    matches = len(SECRET.findall(text)) + len(SECRET_FIELD.findall(text))
+    matches = len(SECRET.findall(text))
+
+    def _field(match):
+        replacement = match.group(1) + '[REDACTED]'
+        if match.group(0) != replacement:
+            nonlocal matches
+            matches += 1
+        return replacement
+
     text = SECRET.sub('[REDACTED]', text)
-    text = SECRET_FIELD.sub(lambda m: m.group(1) + '[REDACTED]', text)
+    text = SECRET_FIELD.sub(_field, text)
     return text, matches
+
+
+def redact_deep(value, redaction):
+    """Defence-in-depth sweep over every string before hashing/persistence."""
+    if isinstance(value, str):
+        text, matches = redact(value)
+        redaction['matches'] += matches
+        return text
+    if isinstance(value, list):
+        return [redact_deep(item, redaction) for item in value]
+    if isinstance(value, dict):
+        return {key: redact_deep(item, redaction) for key, item in value.items()}
+    return value
+
+
+def scalar_text(value):
+    if value is None:
+        return ''
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def extract_failed_checks(basis):
+    """Pull failed checks out of a structured basis.
+
+    Returns None for plain-text bases, otherwise {'checks': [...], 'total': N}.
+    Each failed check keeps name/expected/actual/comparison/details so that the
+    facts that matter for the next round never get buried by sequential truncation
+    (review R4).
+    """
+    data = basis
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except ValueError:
+            return None
+    if not isinstance(data, dict) or not isinstance(data.get('checks'), list):
+        return None
+
+    def pick(mapping, *keys):
+        for key in keys:
+            if isinstance(mapping, dict) and mapping.get(key) is not None:
+                return mapping[key]
+        return None
+
+    failed = []
+    for check in data['checks']:
+        if not isinstance(check, dict):
+            continue
+        result = check.get('result') if isinstance(check.get('result'), dict) else {}
+        passed = result.get('passed', check.get('passed'))
+        if passed is not False and str(passed).lower() != 'false':
+            continue
+        nested = check.get('basis') if isinstance(check.get('basis'), dict) else {}
+        failed.append({
+            'name': pick(check, 'name', 'title', 'check') or '未命名检查',
+            'expected': pick(result, 'expected', 'expected_value')
+                        if pick(result, 'expected', 'expected_value') is not None
+                        else pick(nested, 'expected_value'),
+            'actual': pick(result, 'actual', 'actual_value'),
+            'comparison': pick(result, 'comparison_type'),
+            'details': pick(result, 'details', 'message', 'error'),
+        })
+    return {'checks': failed, 'total': len(data['checks'])}
 
 
 def clip(value, limit, trunc, section, field):
@@ -125,9 +215,10 @@ def gather_failures(db, run, trunc, redaction):
         detail, m1 = clip(event.get('output') if event.get('output') is not None else event.get('input'),
                           900, trunc, 'failures', 'tool_detail')
         signature, m2 = clip(event.get('error_signature'), 280, trunc, 'failures', 'error_signature')
-        redaction['matches'] += m1 + m2
+        title, m3 = redact(event.get('name') or '失败步骤')
+        redaction['matches'] += m1 + m2 + m3
         items.append({'type': 'tool_failure', 'failure_class': 'execution',
-                      'title': str(event.get('name') or '失败步骤'),
+                      'title': title,
                       'event_id': event.get('event_id'), 'evidence_id': event.get('evidence_id'),
                       'position': event.get('position'), 'error_signature': signature,
                       'detail': detail})
@@ -136,20 +227,61 @@ def gather_failures(db, run, trunc, redaction):
                                    'included': len(rows), 'reason': 'failed_tool_events_cap_3'})
     if run['outcome_status'] == 'failed':
         # Every failed independent check is evidence for the next round; no LIMIT here.
+        # Render budget is shared across outcomes; structured fields are always kept
+        # in full on the item (API/artifact), only the rendered body is capped.
+        budget = {'detail': RENDER_DETAIL_CHECKS, 'name': RENDER_NAME_CHECKS}
+        skipped = 0
         for row in db.execute('SELECT payload FROM outcomes WHERE run_id=?', (run_id,)).fetchall():
             outcome = payload(row)
             if outcome.get('status') != 'failed':
                 continue
-            basis, m1 = clip(outcome.get('basis'), 900, trunc, 'failures', 'check_basis')
-            summary, m2 = clip(outcome.get('summary'), 500, trunc, 'failures', 'check_summary')
+            summary, m2 = clip(outcome.get('summary'), 300, trunc, 'failures', 'check_summary')
             source, m3 = redact(outcome.get('source'))
-            redaction['matches'] += m1 + m2 + m3
+            redaction['matches'] += m2 + m3
+            parsed = extract_failed_checks(outcome.get('basis'))
+            failed_checks = []
+            check_total = None
+            if parsed is None:
+                # Plain-text basis (e.g. live verification events): keep as inline text.
+                basis_text, m1 = clip(outcome.get('basis'), 600, trunc, 'failures', 'check_basis')
+                redaction['matches'] += m1
+            else:
+                basis_text = ''
+                check_total = parsed['total']
+                for check in parsed['checks']:
+                    name, mn = clip(check['name'], CHECK_NAME_CAP, trunc, 'failures', 'check_name')
+                    expected, me = clip(scalar_text(check['expected']), CHECK_VALUE_CAP,
+                                        trunc, 'failures', 'check_expected')
+                    actual, ma = clip(scalar_text(check['actual']), CHECK_VALUE_CAP,
+                                      trunc, 'failures', 'check_actual')
+                    details, md = clip(check['details'], CHECK_DETAIL_CAP,
+                                       trunc, 'failures', 'check_details')
+                    comparison, mc = redact(check['comparison'])
+                    redaction['matches'] += mn + me + ma + md + mc
+                    if budget['detail'] > 0:
+                        render_hint, budget['detail'] = 'detail', budget['detail'] - 1
+                    elif budget['name'] > 0:
+                        render_hint, budget['name'] = 'name', budget['name'] - 1
+                    else:
+                        render_hint, skipped = 'skip', skipped + 1
+                    failed_checks.append({'name': name, 'expected': expected, 'actual': actual,
+                                          'comparison': comparison, 'details': details,
+                                          'render': render_hint})
             items.append({'type': 'check_failure', 'failure_class': 'verification',
                           'title': '独立任务验收未通过', 'event_id': None,
                           'evidence_id': outcome.get('evidence_id'), 'source': source,
-                          'basis': basis, 'summary': summary,
+                          'basis_text': basis_text, 'summary': summary,
+                          'check_total': check_total,
+                          'check_failed_count': len(failed_checks),
+                          'failed_checks': failed_checks,
                           'verification_origin': outcome.get('verification_origin'),
                           'observed_at': outcome.get('observed_at')})
+        if skipped:
+            trunc['omissions'].append({'kind': 'failed_checks_not_rendered', 'total': skipped,
+                                       'detail_lines': RENDER_DETAIL_CHECKS,
+                                       'name_lines': RENDER_NAME_CHECKS,
+                                       'reason': 'rendered_body_budget',
+                                       'note': '全部失败检查的结构化字段保留在反馈记录 sections 中，可经 API 查看'})
     return items
 
 
@@ -187,8 +319,9 @@ def build_rca(diag, trunc, redaction):
     findings = []
     for finding in diag.get('findings', []) or []:
         description, m3 = clip(finding.get('description'), 1800, trunc, 'rca', 'findings_description')
-        redaction['matches'] += m3
-        findings.append({'title': str(finding.get('title') or ''),
+        title, m4 = redact(finding.get('title') or '')
+        redaction['matches'] += m3 + m4
+        findings.append({'title': title,
                          'severity': finding.get('severity'), 'description': description,
                          'origin': diag.get('origin'), 'kind': report_kind(diag)})
     return {'key': 'rca', 'title': SECTION_TITLES['rca'], 'status': 'hypothesis',
@@ -219,18 +352,33 @@ def build_evidence(db, run_id, failure_items, diag, redaction, unresolved, data_
         if not eid or eid in seen:
             continue
         seen.add(eid)
-        row = db.execute('SELECT 1 FROM evidence WHERE id=? AND run_id=?', (eid, run_id)).fetchone()
-        status = 'unresolved' if (not row or ref.get('resolution_status') == 'unresolved') else 'resolved'
+        # A row's mere existence does not mean a unique event was found: importers
+        # persist 'ambiguous' references too. Never upgrade ambiguous/unresolved
+        # (review R6); the stored evidence row is the source of truth.
+        row = db.execute('SELECT payload FROM evidence WHERE id=? AND run_id=?',
+                         (eid, run_id)).fetchone()
+        ref_status = ref.get('resolution_status')
+        if not row:
+            status = 'unresolved'
+        else:
+            stored = payload(row).get('resolution_status') or 'unresolved'
+            if stored == 'resolved' and ref_status not in ('unresolved', 'ambiguous'):
+                status = 'resolved'
+            elif stored == 'ambiguous' or ref_status == 'ambiguous':
+                status = 'ambiguous'
+            else:
+                status = 'unresolved'
         label, matches = redact(ref.get('label'))
         redaction['matches'] += matches
         entry = {'evidence_id': eid, 'event_id': ref.get('event_id'), 'label': label,
                  'from_section': ref.get('from_section'), 'resolution_status': status}
         items.append(entry)
-        if status == 'unresolved':
-            unresolved.append({'section': 'evidence', 'label': label,
-                               'event_id': ref.get('event_id'), 'resolution_status': 'unresolved'})
+        if status in ('unresolved', 'ambiguous'):
+            unresolved.append({'section': 'evidence', 'evidence_id': eid, 'label': label,
+                               'event_id': ref.get('event_id'), 'resolution_status': status})
     text = ('以下引用均可在平台经证据ID回查原始事件、输入输出或检查记录；'
-            '标注 unresolved 的引用无法追溯到原件，仅供线索，不得当作已证实证据。')
+            '标注 unresolved 的引用无法追溯到原件，标注 ambiguous 的引用存在多个候选、均未唯一确定，'
+            '二者仅供线索，不得当作已证实证据。')
     if 'capture_incomplete' in data_quality:
         text += '注意：上一轮采集不完整（capture_integrity 为 pending/partial），部分证据可能缺失。'
     return {'key': 'evidence', 'title': SECTION_TITLES['evidence'], 'text': text, 'items': items}
@@ -255,10 +403,25 @@ def build_verification(db, run_id, diag, trunc, redaction):
     items = []
     for row in db.execute('SELECT payload FROM outcomes WHERE run_id=?', (run_id,)).fetchall():
         outcome = payload(row)
-        basis, m1 = clip(outcome.get('basis'), 500, trunc, 'verification', 'rerun_basis')
         source, m2 = redact(outcome.get('source'))
-        redaction['matches'] += m1 + m2
-        items.append({'kind': 'rerun_original', 'source': source, 'basis': basis,
+        parsed = extract_failed_checks(outcome.get('basis'))
+        failed_names = []
+        check_total = None
+        if parsed is not None:
+            check_total = parsed['total']
+            for check in parsed['checks'][:REVERIFY_NAMES]:
+                name, matches = clip(check['name'], REVERIFY_NAME_CAP, trunc,
+                                     'verification', 'rerun_check_name')
+                redaction['matches'] += matches
+                failed_names.append(name)
+            if len(parsed['checks']) > REVERIFY_NAMES:
+                failed_names.append('…等 %d 项（完整清单见平台失败事实索引）'
+                                    % len(parsed['checks']))
+        redaction['matches'] += m2
+        items.append({'kind': 'rerun_original', 'source': source,
+                     'check_total': check_total,
+                     'check_failed_count': len(parsed['checks']) if parsed is not None else None,
+                     'failed_names': failed_names,
                      'evidence_id': outcome.get('evidence_id')})
     directed = None
     if diag and diag.get('verification_suggestion'):
@@ -289,14 +452,44 @@ def render_index(key, items, compact=False):
         lines.append('失败事实索引（自动生成，不可通过编辑删除）：')
         for item in items:
             if item['type'] == 'check_failure':
+                counts = ''
+                if item.get('check_total') is not None:
+                    counts = f" · checks={item['check_total']}(失败{item.get('check_failed_count', 0)})"
+                header = (f"- [任务检查失败] {item['title']} · source={item.get('source')}{counts} · "
+                          f"evidence={_short(item.get('evidence_id'))}")
+                lines.append(header)
+                failed_checks = item.get('failed_checks') or []
+                rendered_checks = [c for c in failed_checks if c.get('render') in ('detail', 'name')]
                 if compact:
-                    lines.append(f"- [任务检查失败] source={item.get('source')} · evidence={_short(item.get('evidence_id'))}")
+                    for check in rendered_checks:
+                        lines.append(f"  · {check['name'][:80]}")
                 else:
-                    lines.append(f"- [任务检查失败] {item['title']} · source={item.get('source')} · "
-                                 f"basis={item.get('basis')} · evidence={_short(item.get('evidence_id'))}")
+                    for check in rendered_checks:
+                        if check.get('render') == 'detail':
+                            comparison = (' (' + check['comparison'] + ')') if check.get('comparison') else ''
+                            details = (' — ' + check['details']) if check.get('details') else ''
+                            lines.append(f"  · {check['name']} | expected={check['expected']} "
+                                         f"actual={check['actual']}{comparison}{details}")
+                        else:
+                            lines.append(f"  · {check['name']}")
+                if item.get('basis_text') and not compact:
+                    lines.append(f"  · basis={item['basis_text']}")
             elif item['type'] == 'tool_failure':
-                lines.append(f"- [执行错误/工具] {item['title']}@{item.get('position')} · "
-                             f"event={_short(item.get('event_id'))} · evidence={_short(item.get('evidence_id'))}")
+                line = (f"- [执行错误/工具] {item['title']}@{item.get('position')} · "
+                        f"event={_short(item.get('event_id'))} · "
+                        f"evidence={_short(item.get('evidence_id'))}")
+                signature = (item.get('error_signature') or '').strip()
+                detail = (item.get('detail') or '').strip()
+                if compact:
+                    if signature:
+                        line += f" · error={signature[:120]}"
+                else:
+                    error_text = signature or detail[:160]
+                    if error_text:
+                        line += f" · error={error_text}"
+                    if signature and detail:
+                        line += f" · detail={detail[:240]}"
+                lines.append(line)
             else:
                 lines.append(f"- [执行错误] {item['title']} · exit_code={item.get('exit_code')} · "
                              f"source_final_status={item.get('source_final_status')}")
@@ -309,11 +502,16 @@ def render_index(key, items, compact=False):
         lines.append('原检查复验清单（自动生成）：')
         for item in items:
             if item.get('kind') == 'rerun_original':
-                if compact:
-                    lines.append(f"- [重跑原检查] source={item.get('source')} · evidence={_short(item.get('evidence_id'))}")
-                else:
-                    lines.append(f"- [重跑原检查] source={item.get('source')} · basis={item.get('basis')} · "
-                                 f"evidence={_short(item.get('evidence_id'))}")
+                counts = ''
+                if item.get('check_total') is not None:
+                    counts = f" · 共{item['check_total']}项(失败{item.get('check_failed_count', 0)})"
+                line = (f"- [重跑原检查] source={item.get('source')}{counts} · "
+                        f"evidence={_short(item.get('evidence_id'))}")
+                lines.append(line)
+                if not compact:
+                    names = item.get('failed_names') or []
+                    if names:
+                        lines.append('  失败项：' + '；'.join(names))
     return '\n'.join(lines) if len(lines) > 1 else ''
 
 
@@ -329,6 +527,21 @@ def render(sections, compact=False):
     return '\n\n'.join(blocks)
 
 
+def enforce_byte_budget(text, trunc):
+    """Absolute guarantee that the rendered body never exceeds MAX_FEEDBACK_BYTES."""
+    raw = text.encode('utf-8')
+    if len(raw) <= MAX_FEEDBACK_BYTES:
+        return text
+    marker = '\n…[正文超过 %d 字节预算已在此截断；完整结构化条目保留在反馈记录中，可经 API 查看]' % MAX_FEEDBACK_BYTES
+    budget = MAX_FEEDBACK_BYTES - len(marker.encode('utf-8'))
+    cut = raw[:budget].decode('utf-8', errors='ignore').rstrip() + marker
+    trunc['items'].append({'section': 'rendered', 'field': 'rendered_text',
+                           'original_bytes': len(raw),
+                           'kept_bytes': len(cut.encode('utf-8')),
+                           'reason': 'hard_byte_budget'})
+    return cut
+
+
 def finalize_rendering(sections, trunc):
     rendered = render(sections)
     if len(rendered.encode('utf-8')) <= MAX_FEEDBACK_BYTES:
@@ -337,14 +550,14 @@ def finalize_rendering(sections, trunc):
         sections[key]['text'] = shrink(sections[key]['text'], limit, trunc, key, 'section_text')
         rendered = render(sections)
         if len(rendered.encode('utf-8')) <= MAX_FEEDBACK_BYTES:
-            break
-    if len(rendered.encode('utf-8')) > MAX_FEEDBACK_BYTES:
-        # Last resort: compact index rows keep every id/type but drop long inline text.
-        rendered = render(sections, compact=True)
-        trunc['omissions'].append({'kind': 'index_compacted',
-                                   'reason': 'total_budget_inline_text_hidden',
-                                   'note': '结构化条目完整保留，可经 API 查看完整字段'})
-    return rendered
+            return rendered
+    # Last resort: compact index rows keep ids/types/failed-check names but drop long text.
+    rendered = render(sections, compact=True)
+    trunc['omissions'].append({'kind': 'index_compacted',
+                               'reason': 'total_budget_inline_text_hidden',
+                               'note': '结构化条目完整保留，可经 API 查看完整字段'})
+    # Absolute guard even when factual rows themselves are huge (review R7).
+    return enforce_byte_budget(rendered, trunc)
 
 
 def canonical(record, sections, rendered):
@@ -405,6 +618,9 @@ def assemble(db, run_id, diagnosis_id):
     }
     sections['evidence'] = build_evidence(db, run_id, failure_items, diag, redaction,
                                           unresolved, data_quality)
+    # Final safety net: no string field (titles, names, labels...) can bypass
+    # redaction into the draft JSON, the hash or the confirmed artifact (review R3).
+    sections = redact_deep(sections, redaction)
     rendered = finalize_rendering(sections, trunc)
     trunc['applied'] = bool(trunc['items'] or trunc['omissions'])
     redaction['applied'] = redaction['matches'] > 0
@@ -423,6 +639,9 @@ def assemble(db, run_id, diagnosis_id):
               'created_at': None, 'updated_at': None,
               'confirmed_at': None, 'cancelled_at': None, 'cancel_reason': None}
     record['content_sha256'] = digest(dumps(canonical(record, sections, rendered)))
+    if len(dumps(record).encode('utf-8')) > MAX_RECORD_BYTES:
+        raise HTTPException(422, '反馈结构化记录超过 %d 字节预算：失败事实过多，'
+                                '请在更小范围的执行上生成反馈' % MAX_RECORD_BYTES)
     return record
 
 
@@ -511,9 +730,11 @@ def router(store):
                 text, matches = redact(edit.text)
                 record['redaction']['matches'] += matches
                 record['sections'][key]['text'] = text
-            rerender(record, trunc)
-            if len(record['rendered_text'].encode('utf-8')) > MAX_FEEDBACK_BYTES:
+            # Unified budget enforcement at edit time (review R7): reject instead of
+            # silently compressing away the user's text; factual indexes are untouched.
+            if len(render(record['sections']).encode('utf-8')) > MAX_FEEDBACK_BYTES:
                 raise HTTPException(422, '反馈总长超过 %d 字节上限，请精简文字；失败事实索引不受影响' % MAX_FEEDBACK_BYTES)
+            rerender(record, trunc)
             record['updated_at'] = utcnow()
             save(db, record)
             return record
@@ -531,6 +752,8 @@ def router(store):
                 raise HTTPException(409, '反馈已取消')
             if spec.content_sha256 != record['content_sha256']:
                 raise HTTPException(409, '反馈预览已变化，请刷新后重新确认')
+            if len(record['rendered_text'].encode('utf-8')) > MAX_FEEDBACK_BYTES:
+                raise HTTPException(409, '反馈内容超过 %d 字节预算，请重新编辑后再确认' % MAX_FEEDBACK_BYTES)
             encoded = dumps(canonical(record, record['sections'], record['rendered_text']))
             if digest(encoded) != record['content_sha256']:
                 raise HTTPException(409, '反馈预览已变化，请刷新后重新确认')

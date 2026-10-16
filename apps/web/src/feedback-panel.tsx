@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useCallback,useEffect,useState} from 'react';
 import {Link} from 'react-router-dom';
 import {AlertCircle,Check,ChevronDown,ClipboardCheck,FileJson,Loader2,X} from 'lucide-react';
 import type {Run} from './api';
@@ -19,28 +19,37 @@ const sectionStatusNames:Record<string,string>={
 function IndexItems({section}:{section:FeedbackSection}) {
   const items=section.items||[];
   if(!items.length)return null;
-  const metaKeys=['severity','resolution_status','source','position','basis','summary','error_signature','detail','description','exit_code','event_id','evidence_id'];
+  const metaKeys=['severity','resolution_status','source','position','basis_text','summary','error_signature','detail','description','exit_code','check_total','check_failed_count','event_id','evidence_id'];
   return <ul className="feedback-index" aria-label="自动生成的事实索引（不可通过编辑删除）">
     {items.map((item,index)=>{
       const kind=String(item.type||item.kind||'item');
       const title=String(item.title??item.label??('条目 '+(index+1)));
       const metas=metaKeys.filter(key=>item[key]!==undefined&&item[key]!==null&&item[key]!=='')
         .map(key=><span key={key}><em>{key}</em>{String(item[key]).slice(0,180)}</span>);
+      const failedChecks=Array.isArray(item.failed_checks)?item.failed_checks as Array<Record<string,unknown>>:[];
+      const failedNames=Array.isArray(item.failed_names)?item.failed_names as string[]:[];
       return <li key={index}>
         <span className={'feedback-index-badge kind-'+kind}>{kind==='check_failure'?'任务检查失败':kind==='tool_failure'?'工具失败':kind==='execution_error'?'执行异常':kind==='rerun_original'?'重跑原检查':kind}</span>
         <strong title={title}>{title}</strong>
         {!!metas.length&&<small>{metas}</small>}
+        {!!failedChecks.length&&<small>
+          {failedChecks.slice(0,20).map((check,i)=><span key={i} className="feedback-check-line"><em>失败检查</em>
+            {String(check.name)}（expected={String(check.expected)}，actual={String(check.actual)}）</span>)}
+          {failedChecks.length>20&&<span><em>其余</em>共 {failedChecks.length-20} 项见上方正文或 API</span>}
+        </small>}
+        {!!failedNames.length&&<small>{failedNames.map((name,i)=><span key={i}><em>失败项</em>{name}</span>)}</small>}
       </li>;
     })}
   </ul>;
 }
 
-function SectionCard({record,sectionKey,busy,onSave}:{record:FeedbackRecord;sectionKey:SectionKey;busy:boolean;onSave:(key:SectionKey,text:string)=>void}) {
+function SectionCard({record,sectionKey,busy,onSave,onDirtyChange}:{record:FeedbackRecord;sectionKey:SectionKey;busy:boolean;onSave:(key:SectionKey,text:string)=>void;onDirtyChange:(key:SectionKey,dirty:boolean)=>void}) {
   const section=record.sections[sectionKey];
   const editable=record.state==='draft'&&editableSections.includes(sectionKey);
   const [text,setText]=useState(section.text);
   useEffect(()=>setText(section.text),[section.text,record.feedback_id]);
   const dirty=text!==section.text;
+  useEffect(()=>{onDirtyChange(sectionKey,dirty);},[dirty,sectionKey,onDirtyChange]);
   return <section className="feedback-section">
     <div className="feedback-section-head"><strong>{section.title}</strong>{section.status&&<span className="feedback-section-status">{sectionStatusNames[section.status]||section.status}</span>}</div>
     {editable?<>
@@ -70,8 +79,13 @@ export function FeedbackPanel({run,diagnosisId}:{run:Run;diagnosisId?:string|nul
   const [confirmArmed,setConfirmArmed]=useState(false);
   const [cancelOpen,setCancelOpen]=useState(false);
   const [cancelReason,setCancelReason]=useState('');
+  const [dirtyMap,setDirtyMap]=useState<Partial<Record<SectionKey,boolean>>>({});
   const record=model.selected;
-  useEffect(()=>{setConfirmArmed(false);setCancelOpen(false);setCancelReason('');},[record?.feedback_id]);
+  useEffect(()=>{setConfirmArmed(false);setCancelOpen(false);setCancelReason('');setDirtyMap({});},[record?.feedback_id]);
+  const reportDirty=useCallback((key:SectionKey,dirty:boolean)=>{
+    setDirtyMap(current=>current[key]===dirty?current:{...current,[key]:dirty});
+  },[]);
+  const dirtyCount=Object.values(dirtyMap).filter(Boolean).length;
   const diagnosisRef=record?.source_diagnosis_id?short(record.source_diagnosis_id,16):null;
 
   return <section className="feedback-panel" aria-label="下一轮修复反馈">
@@ -124,7 +138,7 @@ export function FeedbackPanel({run,diagnosisId}:{run:Run;diagnosisId?:string|nul
           </div>}
           {record.state==='cancelled'&&<div className="feedback-banner cancelled"><X size={15}/><div><strong>此反馈已取消，不会投递</strong>{record.cancel_reason&&<span>原因：{record.cancel_reason}</span>}</div></div>}
 
-          {sectionOrder.map(key=><SectionCard key={key} record={record} sectionKey={key} busy={model.busy} onSave={(sectionKey,text)=>void model.saveEdit(record.feedback_id,sectionKey,text)}/>)}
+          {sectionOrder.map(key=><SectionCard key={key} record={record} sectionKey={key} busy={model.busy} onDirtyChange={reportDirty} onSave={(sectionKey,text)=>void model.saveEdit(record.feedback_id,sectionKey,text)}/>)}
 
           <QualityLedger record={record}/>
 
@@ -133,10 +147,11 @@ export function FeedbackPanel({run,diagnosisId}:{run:Run;diagnosisId?:string|nul
           <dl className="feedback-hash"><dt>Content SHA-256</dt><dd>{record.content_sha256}</dd><dt>From Run Snapshot</dt><dd>{record.from_run_snapshot_hash??'—'}</dd>{Boolean(record.delivery)&&<><dt>Delivery（P2 写入）</dt><dd><code>{JSON.stringify(record.delivery)}</code></dd></>}</dl>
 
           {record.state==='draft'&&<div className="feedback-actions">
+            {dirtyCount>0&&<p className="feedback-dirty-warning">有 {dirtyCount} 段文字修改尚未保存；请先逐段“保存本段修改”并重新预览，再确认——确认锁定的必须与屏幕内容一致。</p>}
             {!confirmArmed?<>
               <p>确认后六段内容按当前预览哈希锁定，固化为只读证据（artifact + evidence）；在 P2 投递通道上线前，确认<b>不会</b>启动 Agent 或产生模型调用。</p>
               <div className="feedback-action-buttons">
-                <button className="button primary" disabled={model.busy} onClick={()=>setConfirmArmed(true)}>确认锁定反馈内容</button>
+                <button className="button primary" disabled={model.busy||dirtyCount>0} onClick={()=>setConfirmArmed(true)}>确认锁定反馈内容</button>
                 {!cancelOpen?<button className="text-button" disabled={model.busy} onClick={()=>setCancelOpen(true)}>取消此草稿</button>:
                   <span className="feedback-cancel-form"><input aria-label="取消原因（可选）" placeholder="取消原因（可选，200 字以内）" maxLength={200} value={cancelReason} onChange={e=>setCancelReason(e.target.value)}/>
                     <button className="button secondary" disabled={model.busy} onClick={()=>void model.cancel(record.feedback_id,cancelReason)}>确认取消</button>
@@ -144,7 +159,7 @@ export function FeedbackPanel({run,diagnosisId}:{run:Run;diagnosisId?:string|nul
               </div>
             </>:<div className="feedback-confirm-arm">
               <AlertCircle size={15}/><div><strong>最终确认：锁定后文本不可再修改</strong><span>仍可在确认后取消并重新生成草稿；取消不会产生后续执行。</span></div>
-              <button className="button primary" disabled={model.busy} onClick={()=>void model.confirm(record)}>再次点击 · 确认锁定</button>
+              <button className="button primary" disabled={model.busy||dirtyCount>0} onClick={()=>void model.confirm(record)}>再次点击 · 确认锁定</button>
               <button className="text-button" disabled={model.busy} onClick={()=>setConfirmArmed(false)}>返回检查内容</button>
             </div>}
           </div>}

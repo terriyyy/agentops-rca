@@ -102,7 +102,7 @@ export function useFeedback(run:Run) {
   });
   const saveEdit=(feedbackId:string,key:SectionKey,text:string)=>perform(async()=>{
     const record=await editFeedback(feedbackId,{[key]:text});
-    if(!alive.current)setRecords(items=>items.map(item=>item.feedback_id===feedbackId?record:item));
+    if(alive.current)setRecords(items=>items.map(item=>item.feedback_id===feedbackId?record:item));
   });
   const confirm=(record:FeedbackRecord)=>perform(async()=>{
     try {
@@ -117,7 +117,7 @@ export function useFeedback(run:Run) {
   });
   const cancel=(feedbackId:string,reason:string)=>perform(async()=>{
     const record=await cancelFeedback(feedbackId,reason);
-    if(!alive.current)setRecords(items=>items.map(item=>item.feedback_id===feedbackId?record:item));
+    if(alive.current)setRecords(items=>items.map(item=>item.feedback_id===feedbackId?record:item));
   });
 
   const selected=records.find(item=>item.feedback_id===selectedId)||null;
