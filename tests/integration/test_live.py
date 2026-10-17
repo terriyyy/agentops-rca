@@ -124,7 +124,7 @@ def test_migration_keeps_v1_and_backup(tmp_path):
         db.execute('INSERT INTO tasks VALUES (?,?,?,?,?)',('old','history','old','preserved','historical'))
     store=Store(path)
     with store.connect() as db:
-        assert db.execute('PRAGMA user_version').fetchone()[0]==3
+        assert db.execute('PRAGMA user_version').fetchone()[0]==4
         assert db.execute('SELECT goal FROM tasks').fetchone()[0]=='preserved'
     assert path.with_name(path.name+'.v1-backup.sqlite3').exists()
     assert Store(path)

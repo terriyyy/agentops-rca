@@ -4,6 +4,7 @@ import {api,pretty,type Diagnosis,type Outcome,type Ref,type Run,type TraceEvent
 import {isFailure,objectValue,rowFailure,traceModel,type TraceRow} from './trace-model';
 import {Link} from 'react-router-dom';
 import {DiagnosisControls} from './diagnosis';
+import {FeedbackPanel} from './feedback-panel';
 import type {RunAnalysis} from './run-analysis';
 
 const checkNames:Record<string,string>={passed:'通过',failed:'未通过',unknown:'未知'};
@@ -65,6 +66,7 @@ export function AnalysisPanel({run,analysis,events,onEvidence,onFullReport}:{run
         <section className="analysis-followup"><div><strong>下一步检查</strong><span>尚未执行</span></div><p>{report.verification_suggestion||report.guidance||'报告未提供具体检查步骤；请先核对失败记录和任务检查依据。'}</p><Link className="followup-history" to={'/tasks/'+run.task_id}>查看任务历程<ArrowUpRight size={13}/></Link><small>修改与复跑在本地终端进行。</small></section>
         {report.boundary&&<details className="analysis-limits"><summary>分析范围与不确定性</summary><p>{report.boundary}</p></details>}
       </>:<div className="analysis-empty"><span className="analysis-empty-icon"><Search size={22}/></span><strong>{run.execution_status==='running'?'先观察本次运行':'还没有原因分析'}</strong><p>{run.execution_status==='running'?'执行结束后，可结合工具记录和任务检查分析原因。':'先定位异常步骤，再核对证据并决定是否调用模型。'}</p></div>}
+      <FeedbackPanel run={run} diagnosisId={report?.diagnosis_id??null}/>
     </div>
     <DiagnosisControls run={run} analysis={analysis}/>
   </div>;

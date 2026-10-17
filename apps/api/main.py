@@ -19,6 +19,7 @@ from .storage import Store, payload
 from .live import router as live_router, live_view
 from .diagnosis import DiagnosisManager, router as diagnosis_router
 from .model_settings import ModelSettings, router as model_settings_router
+from .feedback import router as feedback_router
 from .workbench import overview as workbench_overview, projected_run
 from .run_metrics import run_metrics
 
@@ -80,6 +81,7 @@ def create_app(db_path=None, diagnosis_config=None, model_settings_dir=None, leg
     app.include_router(live_router(store))
     app.include_router(diagnosis_router(manager))
     app.include_router(model_settings_router(manager))
+    app.include_router(feedback_router(store))
 
     @app.exception_handler(HTTPException)
     async def http_error(request,exc): return JSONResponse({'detail':exc.detail},exc.status_code)

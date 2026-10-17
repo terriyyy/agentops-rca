@@ -146,9 +146,9 @@ def test_v2_migration_backup_preserves_records(tmp_path):
     store=Store(tmp_path/'migration.sqlite3')
     with store.connect() as db:
         db.execute("INSERT INTO tasks VALUES ('t','test','test','keep','synthetic')")
-        db.execute('DROP TABLE diagnosis_jobs');db.execute('PRAGMA user_version=2')
+        db.execute('DROP TABLE diagnosis_jobs');db.execute('DROP TABLE feedback_records');db.execute('PRAGMA user_version=2')
     store=Store(store.path)
     with store.connect() as db:
-        assert db.execute('PRAGMA user_version').fetchone()[0]==3
+        assert db.execute('PRAGMA user_version').fetchone()[0]==4
         assert db.execute('SELECT goal FROM tasks').fetchone()[0]=='keep'
     assert store.path.with_name(store.path.name+'.v2-backup.sqlite3').exists()
