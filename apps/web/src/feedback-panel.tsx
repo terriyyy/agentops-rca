@@ -28,6 +28,7 @@ function IndexItems({section}:{section:FeedbackSection}) {
         .map(key=><span key={key}><em>{key}</em>{String(item[key]).slice(0,180)}</span>);
       const failedChecks=Array.isArray(item.failed_checks)?item.failed_checks as Array<Record<string,unknown>>:[];
       const failedNames=Array.isArray(item.failed_names)?item.failed_names as string[]:[];
+      const verifyChecks=Array.isArray(item.checks)?item.checks as Array<Record<string,unknown>>:[];
       return <li key={index}>
         <span className={'feedback-index-badge kind-'+kind}>{kind==='check_failure'?'任务检查失败':kind==='tool_failure'?'工具失败':kind==='execution_error'?'执行异常':kind==='rerun_original'?'重跑原检查':kind}</span>
         <strong title={title}>{title}</strong>
@@ -38,6 +39,15 @@ function IndexItems({section}:{section:FeedbackSection}) {
           {failedChecks.length>20&&<span><em>其余</em>共 {failedChecks.length-20} 项见上方正文或 API</span>}
         </small>}
         {!!failedNames.length&&<small>{failedNames.map((name,i)=><span key={i}><em>失败项</em>{name}</span>)}</small>}
+        {!!verifyChecks.length&&<small>
+          {verifyChecks.slice(0,30).map((check,i)=>{
+            const failed=check.passed===false||String(check.passed).toLowerCase()==='false';
+            const basis=String(check.basis??'').slice(0,120);
+            return <span key={i} className="feedback-check-line"><em>{failed?'FAIL':'PASS'}</em>
+              {String(check.name)}{basis?` · 依据=${basis}`:''}</span>;
+          })}
+          {verifyChecks.length>30&&<span><em>其余</em>共 {verifyChecks.length-30} 项见正文或 API</span>}
+        </small>}
       </li>;
     })}
   </ul>;

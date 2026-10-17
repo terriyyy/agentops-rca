@@ -329,6 +329,46 @@ def structured_basis(failed=1, passed=0):
     return {'checks': checks, 'platform_reran_checks': False}
 
 
+def structured_basis_long(failed=1, passed=0):
+    """Checks with field-budget-length Chinese text so the non-compact index
+    exceeds 24000 bytes and creation falls back to compact rendering (F2 probe)."""
+    long_name = '检查名称字段预算内的长中文文本用于触发正文预算压缩' * 4
+    long_val = '期望值或实际值字段预算内的长中文文本' * 8
+    long_detail = '差异详情字段预算内的长中文文本用于填满失败检查渲染明细行' * 10
+    checks = []
+    for i in range(failed):
+        checks.append({'name': long_name + str(i), 'type': 'database_state',
+                       'basis': {'expected_value': long_val},
+                       'result': {'passed': False, 'expected': long_val, 'actual': long_val,
+                                  'comparison_type': 'equals', 'details': long_detail + str(i)}})
+    for i in range(passed):
+        checks.append({'name': long_name + str(i), 'type': 'database_state',
+                       'basis': {'expected_value': long_val},
+                       'result': {'passed': True, 'expected': long_val, 'actual': long_val,
+                                  'comparison_type': 'equals', 'details': long_detail + str(i)}})
+    return {'checks': checks, 'platform_reran_checks': False}
+
+
+def structured_basis_with_query(failed=1, passed=0):
+    """Same as structured_basis but each check carries a SQL/assertion basis."""
+    checks = []
+    for i in range(failed):
+        checks.append({'name': '失败检查 %d' % i, 'type': 'database_state',
+                       'basis': {'query': 'SELECT count(*) FROM t%d WHERE status=%d' % (i, i)},
+                       'result': {'passed': False, 'expected': i, 'actual': i + 1,
+                                  'comparison_type': 'equals',
+                                  'query': 'SELECT count(*) FROM t%d WHERE status=%d' % (i, i),
+                                  'details': '差异说明 %d' % i}})
+    for i in range(passed):
+        checks.append({'name': '通过检查 %d' % i, 'type': 'database_state',
+                       'basis': {'query': 'SELECT count(*) FROM p%d WHERE ok=%d' % (i, i)},
+                       'result': {'passed': True, 'expected': i, 'actual': i,
+                                  'comparison_type': 'equals',
+                                  'query': 'SELECT count(*) FROM p%d WHERE ok=%d' % (i, i),
+                                  'details': '一致 %d' % i}})
+    return {'checks': checks, 'platform_reran_checks': False}
+
+
 def run_with_structured_outcome(client, basis, *, failed_tool=False, goal='test'):
     from tests.integration.test_live import create, event, send, finish
     run, headers, _ = create(client, goal=goal)
@@ -356,12 +396,16 @@ def test_structured_failed_checks_keep_expected_actual(client):
     rendered = rec['rendered_text']
     assert '失败检查 0' in rendered and 'expected=expected-0' in rendered
     assert 'actual=actual-0' in rendered and '差异说明 0' in rendered
-    # 通过检查不占失败索引篇幅
-    assert '通过检查 0' not in rendered
-    # 复验清单也是结构化的，含失败项与计数
+    # 失败事实索引只含失败检查，通过检查不占失败索引篇幅
+    fail_block = rendered.split('2. 上轮失败事实')[1].split('3. ')[0]
+    assert '通过检查 0' not in fail_block
+    # 复验清单（第6段）保留全部检查（含通过项）的执行依据与计数
     verify = rec['sections']['verification']['items'][0]
-    assert verify['check_total'] == 7 and verify['failed_names'] == ['失败检查 0', '失败检查 1']
+    assert verify['check_total'] == 7 and verify['check_failed_count'] == 2
+    vnames = [c['name'] for c in verify['checks']]
+    assert '失败检查 0' in vnames and '通过检查 0' in vnames
     assert '共7项(失败2)' in rendered
+    assert '[PASS] 通过检查 0' in rendered and '[FAIL] 失败检查 0' in rendered
 
 
 # 14. R5：工具错误签名/详情必须出现在“实际投递正文”
@@ -465,3 +509,59 @@ def test_rendered_budget_is_enforced_at_create_and_confirm(client):
     assert too_long.status_code == 422
     # 草稿内容未被失败的编辑破坏，确认仍成功
     assert confirm(client, rec).status_code == 200
+
+
+# 18. F1：复验清单必须保留通过项和失败项的原检查依据（query/assertion）
+def test_verification_keeps_all_checks_including_passed_basis(client):
+    run_id = run_with_structured_outcome(client, structured_basis_with_query(failed=2, passed=3))
+    rec = draft(client, run_id).json()
+    verify = rec['sections']['verification']['items'][0]
+    assert verify['check_total'] == 5 and verify['check_failed_count'] == 2
+    checks = {c['name']: c for c in verify['checks']}
+    # 通过项和失败项都保留执行依据
+    assert 'SELECT count(*) FROM t0' in checks['失败检查 0']['basis']
+    assert 'SELECT count(*) FROM p0' in checks['通过检查 0']['basis']
+    # 正文也包含通过项与失败项的依据
+    rendered = rec['rendered_text']
+    assert '[PASS] 通过检查 0' in rendered
+    assert '[FAIL] 失败检查 0' in rendered
+    # 确认后 artifact 仍保留完整检查依据
+    conf = confirm(client, rec).json()
+    stored = client.get('/api/evidence/' + conf['content_ref']['evidence_id']).json()
+    stored_verify = stored['content']['sections']['verification']['items'][0]
+    stored_checks = {c['name']: c for c in stored_verify['checks']}
+    assert 'SELECT count(*) FROM p0' in stored_checks['通过检查 0']['basis']
+
+
+# 19. F2：自动 compact 渲染的合法草稿，短编辑应保存成功并可确认
+def test_compact_draft_allows_short_edit_and_confirm(client):
+    run_id = run_with_check(client)
+    # 30 个字段预算内长文本检查，创建时非 compact 索引超 24KB，触发 compact
+    insert_failed_outcome(client, run_id, structured_basis_long(failed=30))
+    rec = draft(client, run_id).json()
+    assert len(rec['rendered_text'].encode('utf-8')) <= 24000
+    compacted = any(o.get('kind') == 'index_compacted' for o in rec['truncation']['omissions'])
+    assert compacted, '此反例需触发 compact 渲染才能验证 F2'
+    # 短编辑：修复指导改成一句话
+    edited = patch_text(client, rec, guidance='先复现失败，再验证。')
+    assert edited.status_code == 200, edited.text
+    edited_rec = edited.json()
+    assert '先复现失败，再验证。' in edited_rec['rendered_text']
+    assert len(edited_rec['rendered_text'].encode('utf-8')) <= 24000
+    # 用新哈希确认成功
+    assert confirm(client, edited_rec).status_code == 200
+
+
+# 20. F2：真正超量的编辑仍被拒绝，且不破坏原草稿
+def test_overlong_edit_rejected_without_corrupting_draft(client):
+    run_id = run_with_check(client)
+    insert_failed_outcome(client, run_id, structured_basis_long(failed=30))
+    rec = draft(client, run_id).json()
+    old_sha = rec['content_sha256']
+    # 超长编辑（即使 index 已 compact，正文仍超限）
+    too_long = patch_text(client, rec, rca='字' * 8000, guidance='句' * 8000)
+    assert too_long.status_code == 422
+    # 原草稿未被破坏：内容与哈希不变，仍可确认
+    fresh = client.get('/api/feedback/' + rec['feedback_id']).json()
+    assert fresh['content_sha256'] == old_sha
+    assert confirm(client, fresh).status_code == 200
